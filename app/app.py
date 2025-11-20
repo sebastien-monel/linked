@@ -17,49 +17,12 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 config = {}
 config['password'] = ""
 
-index_html = '''
-    <!doctype html>
-    <title>Upload new File</title>
-    <h1>Upload new File</h1>
-    <form method=post enctype=multipart/form-data>
-      <input type=file name=file>
-      <input type=password name=password>
-      <input type=submit value=Upload>
-    </form>
-'''
-
-wrong_password_html = '''
-    <!doctype html>
-    <title>Password error</title>
-    <h1>Password error</h1>
-    <form method=post enctype=multipart/form-data>
-      <input type=file name=file>
-      <input type=password name=password>
-      <input type=submit value=Upload>
-    </form>
-'''
-
-password_html = '''
-    <!doctype html>
-    <title>Set password</title>
-    <h1>Set password</h1>
-    <form method=post enctype=multipart/form-data>
-      <input type=password name=password>
-      <input type=submit value="Set password">
-    </form>
-'''
-
-
 @app.route('/', methods=['GET'])
 def route_upload_file_get():
     if (config['password'] != "") :
-        html = index_html
+        return render_template('simple_uploader.html', title='Upload file')
     else :
-        html = password_html
-
-    resp = make_response(html)
-#    resp.set_cookie('session_name', session_data['session_name'])
-    return resp
+        return render_template('ask_password.html', title='Ask password')
 
 @app.route('/<name>', methods = ['GET'])
 def route_download_file(name):
@@ -70,34 +33,28 @@ def route_upload_file_post():
     if (config['password'] != "") :
         if ( (len(request.values) != 0) and ('password' in request.values) ):
             if (request.values['password'] != config['password']) :
-                html = wrong_password_html
+                return render_template('simple_uploader.html', title='Upload file - wrong password')
 
             else :
                 if ('file' in request.files) :
                     file = request.files['file']
                     filename = secure_filename(file.filename)
                     file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                    html = index_html
+                    return render_template('simple_uploader.html', title='Upload file')
+
                 else :
-                    html = index_html
-                    #flash('No file part')
-                    #return redirect(request.url)
+                    return render_template('simple_uploader.html', title='Upload file')
 
         else :
-            html = index_html
-            #flash('No password')
-            #return redirect(request.url)
+            return render_template('simple_uploader.html', title='Upload file')
 
     else :
         if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
             config['password'] = request.values['password']
-            html = index_html
-        else:
-            html = password_html
+            return render_template('simple_uploader.html', title='Upload file')
 
-    resp = make_response(html)
-#    resp.set_cookie('session_name', session_data['session_name'])
-    return resp
+        else:
+            return render_template('ask_password.html', title='Ask password')
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0:443') #debug=True, ssl_context="adhoc", ... to_review !!!
