@@ -1,26 +1,41 @@
 FROM python:3.12-rc-bullseye
 
+#Create directories
 RUN mkdir /config
-COPY requirements.txt /config
+RUN mkdir /certs
+RUN mkdir /app
+RUN mkdir /uploaded_files
 
+RUN useradd -ms /bin/bash web
+
+#Install requirements
+COPY requirements.txt /config
 RUN apt-get update
-#RUN apt-get install -y libxml2-dev libxslt-dev
-#graphviz
 RUN pip install -r /config/requirements.txt
 
-RUN mkdir /certs
+#Install certs
 COPY config /certs
-
-RUN mkdir /app
 COPY app /app
-WORKDIR /app
-#WORKDIR /
 
-RUN mkdir /uploaded_files
+#Configure access write
+RUN chmod 760 /certs/server_key.pem
+RUN chown root:web /certs/server_key.pem
+
+RUN chmod 760 /certs/server_cert.pem
+RUN chown root:web /certs/server_cert.pem
+
+RUN chmod 770 /uploaded_files
+RUN chown root:web /uploaded_files
+
+#Change current user
+USER web
+
+#Docker config
+WORKDIR /app
 VOLUME /uploaded_files
 
-#ENTRYPOINT ["gunicorn"]
-#ENTRYPOINT ["python3"]
+#Docker container start
+##ENTRYPOINT ["gunicorn"]
+##ENTRYPOINT ["python3"]
 #CMD ["app.py"]
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--timeout","60", "--certfile", "/certs/server_cert.pem", "--keyfile", "/certs/server_key.pem", "app:app"]
-#CMD ["gunicorn", "--bind", "0.0.0.0:5000","app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "4", "--timeout","60", "--certfile", "/certs/server_cert.pem", "--keyfile", "/certs/server_key.pem", "app:app"]
