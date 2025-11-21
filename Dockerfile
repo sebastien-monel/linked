@@ -18,11 +18,8 @@ COPY config /certs
 COPY app /app
 
 #Configure access write
-RUN chmod 760 /certs/server_key.pem
-RUN chown root:web /certs/server_key.pem
-
-RUN chmod 760 /certs/server_cert.pem
-RUN chown root:web /certs/server_cert.pem
+RUN chmod 660 /certs/*
+RUN chown root:web /certs/*
 
 RUN chmod 770 /uploaded_files
 RUN chown root:web /uploaded_files
@@ -38,4 +35,4 @@ VOLUME /uploaded_files
 ##ENTRYPOINT ["gunicorn"]
 ##ENTRYPOINT ["python3"]
 #CMD ["app.py"]
-CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "1", "--timeout","60", "--certfile", "/certs/server_cert.pem", "--keyfile", "/certs/server_key.pem", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "1", "--timeout","60", "--certfile", "/certs/fullchain.pem", "--keyfile", "/certs/privkey.pem", "app:app"]

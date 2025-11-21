@@ -7,24 +7,24 @@ curl \
     -X POST \
     -F "password=test" \
     -F "file=@monfichierbinaire.pdf" \
-    --insecure \
+    #--insecure \
     "https://$MON_URL/"
 
 curl \
     -X POST \
     -F "password=test" \
     -F "file=@test.txt" \
-    --insecure \
+    #--insecure \
     "https://$MON_URL/"
 
 curl \
     -X GET \
-    --insecure \
+    #--insecure \
     -o monpdf.pdf\
     "https://$MON_URL/monfichierbinaire.pdf"
 
 curl \
     -X GET \
-    --insecure \
+    #--insecure \
     "https://$MON_URL/test.txt"
 ```
