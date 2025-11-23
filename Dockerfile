@@ -24,6 +24,9 @@ RUN chown root:web /certs/*
 RUN chmod 770 /uploaded_files
 RUN chown root:web /uploaded_files
 
+RUN chmod 770 /config
+RUN chown root:web /config
+
 #Change current user
 USER web
 
