@@ -1,3 +1,4 @@
+#!/usr/local/bin/python
 from flask import (
     Flask, jsonify, flash, request, redirect, url_for,
     render_template, send_file, send_from_directory, make_response,
@@ -10,6 +11,7 @@ import os
 import sys
 import json
 import math
+import ssl
 
 #Errors :
 from cryptography.exceptions import InvalidKey
@@ -24,6 +26,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def save_config_file(config):
     token = ''
+    neo4j_password = ''
+
     if 'key' in config :
         b_token = bytes(config['token'], 'utf-8')
         token = encrypt(
@@ -32,14 +36,22 @@ def save_config_file(config):
                 config['iv']
             ).hex()
 
+        if (config['neo4j']['password'] != ""):
+            b_neo4j_password = bytes(config['neo4j']['password'], 'utf-8')
+            neo4j_password = encrypt(
+                    b_token.ljust(math.trunc(len(b_neo4j_password) / 16) + 16, b'\00'),
+                    config['key'],
+                    config['iv']
+                ).hex()
+
     data = {
-        'salt' : config['salt'].hex(), #8*16=128
-        'iv' : config['iv'].hex(), #8*16=128
+        'salt' : config['salt'].hex(),
+        'iv' : config['iv'].hex(),
         'token_encrypted' : token,
         'neo4j' : {
             'instance' : config['neo4j']['instance'],
             'login' : config['neo4j']['login'],
-            'password_encrypted' : config['neo4j']['password'] #TO_REVIEW
+            'password_encrypted' : neo4j_password
             }
         }
 
@@ -56,8 +68,20 @@ def open_config_file(key=b""):
             pass
 
     token = ''
+    password = ''
     if key :
-        token = decrypt(bytes.fromhex(tempo['token_encrypted']), key, bytes.fromhex(tempo['iv'])).rstrip(b'\x00').decode('utf-8')
+        token = decrypt(
+                bytes.fromhex(tempo['token_encrypted']),
+                key,
+                bytes.fromhex(tempo['iv'])
+            ).rstrip(b'\x00').decode('utf-8')
+
+        if (tempo['neo4j']['password_encrypted'] != '') :
+            password = decrypt(
+                    bytes.fromhex(tempo['neo4j']['password_encrypted']),
+                    key,
+                    bytes.fromhex(tempo['iv'])
+                ).rstrip(b'\x00').decode('utf-8')
 
     return {
         'salt': bytes.fromhex(tempo['salt']),
@@ -66,7 +90,7 @@ def open_config_file(key=b""):
         'neo4j': {
             'instance': tempo['neo4j']['instance'],
             'login': tempo['neo4j']['login'],
-            'password': tempo['neo4j']['password_encrypted']
+            'password': password
             }
         }
 
@@ -125,16 +149,6 @@ def decrypt(encrypted_message, key, iv):
     decryptor = cypher.decryptor()
     return decryptor.update(encrypted_message) + decryptor.finalize() #message
 
-@app.route('/', methods=['GET'])
-def route_upload_file_get():
-    if (config['token'] != "") :
-        return render_template('simple_uploader.html', title='Upload file')
-    else :
-        if ('key' in config) :
-            return render_template('ask_token.html', title='Ask token')
-        else :
-            return render_template('ask_password.html', title='Ask password')
-
 @app.route('/config.json', methods = ['GET', 'POST'])
 def route_download_config():
     if ( (len(request.values) != 0) and ('password' in request.values) ):
@@ -173,42 +187,114 @@ def route_download_config():
 def route_download_file(name):
     return send_from_directory(app.config["UPLOAD_FOLDER"], name, as_attachment=True, download_name=name)
 
-@app.route('/', methods=['POST'])
-def route_upload_file_post():
-    if (config['token'] != "") :
-        if ( (len(request.values) != 0) and ('token' in request.values) ):
-            if (request.values['token'] != config['token']) :
+
+def is_ready(config):
+    return (('key' in config)
+        and ('neo4j' in config)
+        and ('token' in config) and (config['token'] != "")
+        and ('instance' in config['neo4j']) and (config['neo4j']['instance'] != '')
+    )
+
+def is_wait_for_neo4j_credential(config):
+    return (('neo4j' in config)
+        and ('key' in config)
+        and ('token' in config) and (config['token'] != "")
+        and ('instance' in config['neo4j']) and (config['neo4j']['instance'] == '')
+    )
+
+def is_wait_for_token(config):
+    return (('key' in config)
+        and ('token' in config)
+        and (config['token'] == "")
+    )
+
+def is_wait_for_password(config):
+    return ( ('key' not in config) )
+
+def verify_post_neo4j_credential(request):
+    return (
+        (len(request.values) != 0)
+        and ('instance' in request.values)
+        and (request.values['instance'] != "")
+        and ('login' in request.values)
+        and (request.values['login'] != "")
+        and ('password' in request.values)
+        and (request.values['password'] != "")
+    )
+
+def verify_post_file(request):
+    return ((len(request.files) != 0) and ('file' in request.files)
+        and (len(request.values) != 0)
+        and ('token' in request.values)
+    )
+
+@app.route('/', methods=['GET', 'POST'])
+def route_upload_file_get():
+    if is_ready(config) : #is_ready
+        if ( verify_post_file(request) and (request.values['token'] == config['token'] ) ): #verify_post_file
+            file = request.files['file']
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            return render_template('simple_uploader.html', title='Upload file')
+
+        elif (request.method == 'POST'):
+            if ('token' not in request.values):
+                return render_template('simple_uploader.html', title='Upload file - missing token')
+
+            elif (('token' in request.values) and (request.values['token'] != config['token'])):
                 return render_template('simple_uploader.html', title='Upload file - wrong token')
 
-            else :
-                if ('file' in request.files) :
-                    file = request.files['file']
-                    filename = secure_filename(file.filename)
-                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                    return render_template('simple_uploader.html', title='Upload file')
+            elif ('file' not in request.files):
+                return render_template('simple_uploader.html', title='Upload file - missing file')
 
-                else :
-                    return render_template('simple_uploader.html', title='Upload file')
+            else :
+                return render_template('simple_uploader.html', title='Upload file - errors in information')
 
         else :
             return render_template('simple_uploader.html', title='Upload file')
 
-    else :
-        if ('key' in config):
-            #if ( (len(request.values) != 0) and ('token' in request.values) and (request.values['token'] != "") ):
-            if ( 'token' in request.values ):
-                config['token'] = request.values['token']
-                save_config_file(config)
-                return render_template('simple_uploader.html', title='Upload file')
-            else:
-                return render_template('ask_token.html', title='Ask token')
+    elif is_wait_for_neo4j_credential(config): #is_wait_for_neo4j_credential
+        if verify_post_neo4j_credential(request): #verify_post_neo4j_credential
+            config['neo4j']['instance'] = request.values['instance']
+            config['neo4j']['login'] = request.values['login']
+            config['neo4j']['password'] = request.values['password']
+            save_config_file(config)
+            return render_template('simple_uploader.html', title='Upload file')
+
+        elif (request.method == 'POST'):
+            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential - errors in information')
+
         else :
-            if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
-                config['key'] = derive(bytes(request.values['password'], 'utf-8'))
-                return render_template('ask_token.html', title='Ask token')
+            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
 
-            else:
-                return render_template('ask_password.html', title='Ask password')
+    elif is_wait_for_token(config) : #is_wait_for_token
+        if ( (len(request.values) != 0) and ('token' in request.values) and (request.values['token'] != "") ):
+            config['token'] = request.values['token']
+            save_config_file(config)
+            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
 
+        elif (request.method == 'POST'):
+            return render_template('ask_token.html', title='Ask token - empty token')
+
+        else:
+            return render_template('ask_token.html', title='Ask token')
+
+    elif is_wait_for_password(config): #is_wait_for_password
+        if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
+            config['key'] = derive(bytes(request.values['password'], 'utf-8'))
+            return render_template('ask_token.html', title='Ask token')
+
+        elif (request.method == 'POST'):
+            return render_template('ask_password.html', title='Ask password - empty password not allowed')
+
+        else :
+            return render_template('ask_password.html', title='Ask password')
+
+    else : #strange case
+        return render_template('ask_password.html', title='Ask password - should not happen')
+
+#this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":
-    app.run(host='0.0.0.0:443') #debug=True, ssl_context="adhoc", ... to_review !!!
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
+    app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True

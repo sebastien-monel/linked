@@ -27,6 +27,8 @@ RUN chown root:web /uploaded_files
 RUN chmod 770 /config
 RUN chown root:web /config
 
+RUN chmod 755 /app/app.py
+
 #Change current user
 USER web
 
@@ -35,7 +37,8 @@ WORKDIR /app
 VOLUME /uploaded_files
 
 #Docker container start
-##ENTRYPOINT ["gunicorn"]
-##ENTRYPOINT ["python3"]
-#CMD ["app.py"]
-CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "1", "--timeout","60", "--certfile", "/certs/fullchain.pem", "--keyfile", "/certs/privkey.pem", "app:app"]
+#ENTRYPOINT ["python"]
+CMD ["/app/app.py"]
+
+#PREVIOUS config with gunicorn :
+#CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "1", "--timeout","60", "--certfile", "/certs/fullchain.pem", "--keyfile", "/certs/privkey.pem", "app:app"]
