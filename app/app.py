@@ -56,7 +56,7 @@ def save_config_file(config):
         }
 
     with open('/config/config.json', mode='wt') as config_file:
-        json.dump(data, config_file)
+        json.dump(data, config_file, indent=4)
     return None
 
 def open_config_file(key=b""):
@@ -93,21 +93,6 @@ def open_config_file(key=b""):
             'password': password
             }
         }
-
-#argon2 et aes config
-if not(os.path.exists('/config/config.json')):
-    save_config_file({
-        'salt' : os.urandom(16), #8*16=128
-        'iv' : os.urandom(16), #8*16=128
-        'token' : '', #os.urandom(32).hex() #8*32=256
-        'neo4j': {
-            'instance': '',
-            'login': '',
-            'password': ''
-        }
-    })
-
-config = open_config_file()
 
 def derive(password): #b"my great password"
     kdf = Argon2id(
@@ -160,6 +145,8 @@ def route_download_config():
             tempo = open_config_file(config['key'])
 
             data = {
+                'salt': tempo['salt'],
+                'iv': tempo['iv'],
                 'token' : tempo['token']
                 }
 
@@ -282,7 +269,15 @@ def route_upload_file_get():
     elif is_wait_for_password(config): #is_wait_for_password
         if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
             config['key'] = derive(bytes(request.values['password'], 'utf-8'))
-            return render_template('ask_token.html', title='Ask token')
+
+            if (config['neo4j']['instance'] != ''): #conf.json file already exists at boot
+                tempo = open_config_file(config['key'])
+                config['token'] = tempo['token']
+                config['neo4j']['password'] = tempo['neo4j']['password']
+                return render_template('simple_uploader.html', title='Upload file')
+
+            else :
+                return render_template('ask_token.html', title='Ask token')
 
         elif (request.method == 'POST'):
             return render_template('ask_password.html', title='Ask password - empty password not allowed')
@@ -292,6 +287,21 @@ def route_upload_file_get():
 
     else : #strange case
         return render_template('ask_password.html', title='Ask password - should not happen')
+
+#argon2 et aes config
+if not(os.path.exists('/config/config.json')):
+    save_config_file({
+        'salt' : os.urandom(16), #8*16=128
+        'iv' : os.urandom(16), #8*16=128
+        'token' : '', #os.urandom(32).hex() #8*32=256
+        'neo4j': {
+            'instance': '',
+            'login': '',
+            'password': ''
+        }
+    })
+
+config = open_config_file()
 
 #this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":
