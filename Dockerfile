@@ -1,4 +1,4 @@
-FROM python:3.12-rc-bullseye
+FROM python:3.13-trixie
 
 #Create directories
 RUN mkdir /config
@@ -9,36 +9,41 @@ RUN mkdir /uploaded_files
 RUN useradd -ms /bin/bash web
 
 #Install requirements
-COPY requirements.txt /config
+COPY requirements.txt /
 RUN apt-get update
-RUN pip install -r /config/requirements.txt
+RUN pip install -r /requirements.txt
+RUN rm /requirements.txt
 
 #Install certs
-COPY config /certs
 COPY app /app
 
 #Configure access write
-RUN chmod 660 /certs/*
-RUN chown root:web /certs/*
+RUN chmod -R 750 /certs
+RUN chown -R root:web /certs
 
-RUN chmod 770 /uploaded_files
-RUN chown root:web /uploaded_files
+RUN chmod -R 770 /uploaded_files
+RUN chown -R root:web /uploaded_files
 
-RUN chmod 770 /config
-RUN chown root:web /config
+RUN chmod -R 770 /config
+RUN chown -R root:web /config
 
-RUN chmod 755 /app/app.py
+RUN chmod -R 755 /app
+RUN chown -R root:web /app
+
+COPY boot.sh /
+RUN chmod -R 755 /boot.sh
+RUN chown -R root:web /boot.sh
 
 #Change current user
-USER web
+#USER web
 
 #Docker config
 WORKDIR /app
 VOLUME /uploaded_files
 
 #Docker container start
-#ENTRYPOINT ["python"]
-CMD ["/app/app.py"]
+ENTRYPOINT ["/bin/bash"]
+CMD ["/boot.sh"]
 
 #PREVIOUS config with gunicorn :
 #CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "1", "--timeout","60", "--certfile", "/certs/fullchain.pem", "--keyfile", "/certs/privkey.pem", "app:app"]
