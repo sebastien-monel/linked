@@ -17,6 +17,7 @@ import sys
 import json
 import math
 import ssl
+import uuid
 
 #Errors :
 from cryptography.exceptions import InvalidKey
@@ -36,7 +37,16 @@ MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:dateti
 """
 
 query_file = """
-MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'log file', file: $file})
+MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'log file', file: $file, file_uuid: $file_uuid})
+"""
+
+query_get_file = """
+MATCH (l:log {name:$name, instance_number:$instance_number, type:'log file', file_uuid: $file_uuid}) 
+MERGE (l2:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'get file'}) 
+MERGE (l2)-[:this]->(l) 
+RETURN l.file as file 
+ORDER BY l.creation_date DESC 
+LIMIT 2
 """
 
 def save_config_file(config):
@@ -189,9 +199,10 @@ def route_download_config():
         return render_template('ask_password.html', title='Ask password')
 
 
-@app.route('/<name>', methods = ['GET'])
-def route_download_file(name):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], name, as_attachment=True, download_name=name)
+@app.route('/<uuid>', methods = ['GET'])
+def route_download_file(uuid):
+    file_name = neo4_get_file(config, uuid)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
 
 
 def is_ready(config):
@@ -234,15 +245,33 @@ def verify_post_file(request):
         and ('token' in request.values)
     )
 
-def neo4_log_file(config, file):
+def neo4_log_file(config, file, file_uuid):
     results = config['driver'].execute_query(
         query_file,
         name= os.environ['INSTANCE_DNS'],
         instance_number= instance_number,
-        file= file
+        file= file,
+        file_uuid= file_uuid
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
+
+
+
+def neo4_get_file(config, file_uuid):
+    results = config['driver'].execute_query(
+        query_get_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        file_uuid= file_uuid
+    )
+
+    for result in results.records:
+        data = result.data()
+        break #TO_REVIEW
+
+    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return data['file']
 
 def neo4j_connection(config):
     app.logger.info("set config file : %s", config['neo4j']['instance'])
@@ -254,8 +283,6 @@ def neo4j_connection(config):
         instance_number= instance_number
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    #for result in results.records:
-    #    data = result.data()
     return True
 
 @app.route('/', methods=['GET', 'POST'])
@@ -265,8 +292,9 @@ def route_upload_file_get():
             file = request.files['file']
             filename = secure_filename(file.filename)
             try :
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                neo4_log_file(config, filename)
+                file_uuid = str(uuid.uuid1())
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
+                neo4_log_file(config, filename, file_uuid)
                 return render_template('simple_uploader.html', title='Upload file')
             except PermissionError:
                 return render_template('simple_uploader.html', title='Upload file - permission error')
@@ -365,5 +393,5 @@ config['driver'] = None
 if __name__ == "__main__":
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
-    app.run(host='0.0.0.0', port='443', ssl_context=context, debug=True) #debug=True
+    app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
     app.logger.info("instance name : %s", instance_number)
