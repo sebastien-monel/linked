@@ -221,8 +221,11 @@ def route_upload_file_get():
         if ( verify_post_file(request) and (request.values['token'] == config['token'] ) ): #verify_post_file
             file = request.files['file']
             filename = secure_filename(file.filename)
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-            return render_template('simple_uploader.html', title='Upload file')
+            try :
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                return render_template('simple_uploader.html', title='Upload file')
+            except PermissionError:
+                return render_template('simple_uploader.html', title='Upload file - permission error')
 
         elif (request.method == 'POST'):
             if ('token' not in request.values):

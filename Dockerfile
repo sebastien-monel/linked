@@ -11,6 +11,7 @@ RUN useradd -ms /bin/bash web
 #Install requirements
 COPY requirements.txt /
 RUN apt-get update
+RUN apt-get install acl
 RUN pip install -r /requirements.txt
 RUN rm /requirements.txt
 
@@ -27,7 +28,7 @@ RUN chown -R root:web /uploaded_files
 RUN chmod -R 770 /config
 RUN chown -R root:web /config
 
-RUN chmod -R 755 /app
+RUN chmod -R 750 /app
 RUN chown -R root:web /app
 
 COPY boot.sh /
