@@ -5,8 +5,13 @@ from flask import (
     abort
     )
 from werkzeug.utils import secure_filename
+
+from neo4j import GraphDatabase, RoutingControl
+from neo4j.exceptions import DriverError, Neo4jError
+
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+
 import os
 import sys
 import json
@@ -24,6 +29,16 @@ app = Flask(__name__, static_url_path="")
 app.secret_key = os.urandom(32)  # Used for session.
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+instance_number = os.urandom(32).hex()
+
+query_startup = """
+MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'instance startup'})
+"""
+
+query_file = """
+MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'log file', file: $file})
+"""
+
 def save_config_file(config):
     token = ''
     neo4j_password = ''
@@ -39,7 +54,7 @@ def save_config_file(config):
         if (config['neo4j']['password'] != ""):
             b_neo4j_password = bytes(config['neo4j']['password'], 'utf-8')
             neo4j_password = encrypt(
-                    b_token.ljust(math.trunc(len(b_neo4j_password) / 16) + 16, b'\00'),
+                    b_neo4j_password.ljust(math.trunc(len(b_neo4j_password) / 16) + 16, b'\00'),
                     config['key'],
                     config['iv']
                 ).hex()
@@ -51,7 +66,9 @@ def save_config_file(config):
         'neo4j' : {
             'instance' : config['neo4j']['instance'],
             'login' : config['neo4j']['login'],
-            'password_encrypted' : neo4j_password
+            'password_encrypted' : neo4j_password,
+            'scheme': config['neo4j']['scheme'],
+            'port': config['neo4j']['port']
             }
         }
 
@@ -90,7 +107,9 @@ def open_config_file(key=b""):
         'neo4j': {
             'instance': tempo['neo4j']['instance'],
             'login': tempo['neo4j']['login'],
-            'password': password
+            'password': password,
+            'scheme': tempo['neo4j']['scheme'],
+            'port': tempo['neo4j']['port']
             }
         }
 
@@ -215,6 +234,30 @@ def verify_post_file(request):
         and ('token' in request.values)
     )
 
+def neo4_log_file(config, file):
+    results = config['driver'].execute_query(
+        query_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        file= file
+    ).summary
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return True
+
+def neo4j_connection(config):
+    app.logger.info("set config file : %s", config['neo4j']['instance'])
+    uri = f"{config['neo4j']['scheme']}://{config['neo4j']['instance']}:{config['neo4j']['port']}"
+    config['driver'] = GraphDatabase.driver(uri, auth=(config['neo4j']['login'], config['neo4j']['password']))
+    results = config['driver'].execute_query(
+        query_startup,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number
+    ).summary
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    #for result in results.records:
+    #    data = result.data()
+    return True
+
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
     if is_ready(config) : #is_ready
@@ -223,6 +266,7 @@ def route_upload_file_get():
             filename = secure_filename(file.filename)
             try :
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                neo4_log_file(config, filename)
                 return render_template('simple_uploader.html', title='Upload file')
             except PermissionError:
                 return render_template('simple_uploader.html', title='Upload file - permission error')
@@ -249,7 +293,11 @@ def route_upload_file_get():
             config['neo4j']['login'] = request.values['login']
             config['neo4j']['password'] = request.values['password']
             save_config_file(config)
-            return render_template('simple_uploader.html', title='Upload file')
+
+            if neo4j_connection(config):
+                return render_template('simple_uploader.html', title='Upload file - database connected')
+            else :
+                return render_template('simple_uploader.html', title='Upload file - connection failed')
 
         elif (request.method == 'POST'):
             return render_template('ask_neo4j_password.html', title='Ask Neo4J credential - errors in information')
@@ -277,7 +325,11 @@ def route_upload_file_get():
                 tempo = open_config_file(config['key'])
                 config['token'] = tempo['token']
                 config['neo4j']['password'] = tempo['neo4j']['password']
-                return render_template('simple_uploader.html', title='Upload file')
+
+                if neo4j_connection(config):
+                    return render_template('simple_uploader.html', title='Upload file - database connected')
+                else :
+                    return render_template('simple_uploader.html', title='Upload file - connection failed')
 
             else :
                 return render_template('ask_token.html', title='Ask token')
@@ -300,14 +352,18 @@ if not(os.path.exists('/config/config.json')):
         'neo4j': {
             'instance': '',
             'login': '',
-            'password': ''
+            'password': '',
+            'scheme': 'neo4j+s',
+            'port': '7687'
         }
     })
 
 config = open_config_file()
+config['driver'] = None
 
 #this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
-    app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
+    app.run(host='0.0.0.0', port='443', ssl_context=context, debug=True) #debug=True
+    app.logger.info("instance name : %s", instance_number)
