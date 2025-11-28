@@ -33,19 +33,38 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 instance_number = os.urandom(32).hex()
 
 query_startup = """
-MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'instance startup'})
+MERGE (dns:dns {name:$name}) 
+ON CREATE SET dns.creation_date= datetime() 
+MERGE (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
+ON CREATE SET li.creation_date= datetime() 
+MERGE (lt:log_type {name:'instance startup'}) 
+ON CREATE SET lt.creation_date= datetime() 
+CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(li) 
 """
 
 query_file = """
-MERGE (l:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'log file', file: $file, file_uuid: $file_uuid})
+MERGE (dns:dns {name:$name}) 
+ON CREATE SET dns.creation_date= datetime() 
+MERGE (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
+ON CREATE SET li.creation_date= datetime() 
+MERGE (f:file {file_uuid: $file_uuid})-[:in]->(li) 
+ON CREATE SET 
+    f.creation_date= datetime(), 
+    f.file= $file 
+MERGE (lt:log_type {name:'log file'}) 
+ON CREATE SET lt.creation_date= datetime() 
+CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
 """
 
 query_get_file = """
-MATCH (l:log {name:$name, instance_number:$instance_number, type:'log file', file_uuid: $file_uuid}) 
-MERGE (l2:log {name:$name, instance_number:$instance_number, creation_date:datetime(), type:'get file'}) 
-MERGE (l2)-[:this]->(l) 
-RETURN l.file as file 
-ORDER BY l.creation_date DESC 
+MATCH (dns:dns {name:$name}) 
+MATCH (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li) 
+MERGE (lt:log_type {name:'access file'}) 
+ON CREATE SET lt.creation_date= datetime() 
+CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
+RETURN f.file as file 
+ORDER BY f.creation_date DESC 
 LIMIT 2
 """
 
