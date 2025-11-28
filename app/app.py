@@ -18,6 +18,7 @@ import json
 import math
 import ssl
 import uuid
+import hashlib
 
 #Errors :
 from cryptography.exceptions import InvalidKey
@@ -182,41 +183,21 @@ def decrypt(encrypted_message, key, iv):
     decryptor = cypher.decryptor()
     return decryptor.update(encrypted_message) + decryptor.finalize() #message
 
-@app.route('/config.json', methods = ['GET', 'POST'])
-def route_download_config():
-    if ( (len(request.values) != 0) and ('password' in request.values) ):
-        data = {}
+def digest(uuid, digest_name):
+    data = {'uuid': uuid}
+    with open(app.config["UPLOAD_FOLDER"] + '/' + uuid, 'rb') as f:
+        digest = hashlib.file_digest(f, digest_name)
+        data[digest_name] = digest.hexdigest()
+        return data
+    return data
 
-        try :
-            #password_b = bytes(request.values['password'], 'utf-8')
-            #key = derive(password_b)
-            tempo = open_config_file(config['key'])
+@app.route('/<uuid>/sha256', methods = ['GET'])
+def file_sha256(uuid):
+    return jsonify(digest(uuid, "sha256"))
 
-            data = {
-                'salt': tempo['salt'],
-                'iv': tempo['iv'],
-                'token' : tempo['token']
-                }
-
-        except KeyError:
-            pass
-        finally :
-            pass
-
-        #for dict_key in ['key', 'iv', 'salt', 'password_b', 'derived', 'encrypted_token', 'decrypted_token']:
-        #    if dict_key in config :
-        #        try :
-        #            data[dict_key] = config[dict_key].hex()
-        #        except KeyError:
-        #            pass
-        #        finally:
-        #            pass
-
-        return jsonify(data)
-
-    else:
-        return render_template('ask_password.html', title='Ask password')
-
+@app.route('/<uuid>/sha512', methods = ['GET'])
+def file_sha512(uuid):
+    return jsonify(digest(uuid, "sha512"))
 
 @app.route('/<uuid>', methods = ['GET'])
 def route_download_file(uuid):
@@ -274,8 +255,6 @@ def neo4_log_file(config, file, file_uuid):
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
-
-
 
 def neo4_get_file(config, file_uuid):
     results = config['driver'].execute_query(
