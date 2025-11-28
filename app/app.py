@@ -58,11 +58,21 @@ CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f)
 """
 
 query_get_file = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name})
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
 MERGE (lt:log_type {name:'access file'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
 RETURN f.file as file 
+ORDER BY f.creation_date DESC 
+LIMIT 2
+"""
+
+query_get_file_type = """
+MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MERGE (lt:log_type {name:'access file type'}) 
+ON CREATE SET lt.creation_date= datetime() 
+CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
+RETURN f.file as file, ft.name as file_type, ft.ext as type_ext, ft.precision as type_precision 
 ORDER BY f.creation_date DESC 
 LIMIT 2
 """
@@ -218,6 +228,26 @@ def file_sha256(uuid):
 def file_sha512(uuid):
     return jsonify(digest(uuid, "sha512"))
 
+@app.route('/<uuid>/type', methods = ['GET'])
+def file_type(uuid):
+    data = {'uuid': uuid}
+    results = config['driver'].execute_query(
+        query_get_file_type,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        file_uuid= uuid
+    )
+
+    for result in results.records:
+        data_line = result.data()
+        data['type_precision'] = data_line['type_precision']
+        data['type_ext'] = data_line['type_ext']
+        data['file_type'] = data_line['file_type']
+        break
+
+    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return jsonify(data)
+
 @app.route('/<uuid>', methods = ['GET'])
 def route_download_file(uuid):
     file_name = neo4_get_file(config, uuid)
@@ -308,6 +338,22 @@ def route_hook(id):
     app.logger.info("hook : %s", id)
     return jsonify(data)
 
+
+def install_config(config):
+    query = ""
+    with open("/app/cypher/file_types.cypher", 'rt') as f :
+        query = f.read()
+
+    if (len(query) == 0):
+        return False
+
+    results = config['driver'].execute_query(
+        query
+    ).summary
+
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return True
+
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
     if is_ready(config) : #is_ready
@@ -346,7 +392,10 @@ def route_upload_file_get():
             save_config_file(config)
 
             if neo4j_connection(config):
-                return render_template('simple_uploader.html', title='Upload file - database connected')
+                if install_config(config):
+                    return render_template('simple_uploader.html', title='Upload file - database connected')
+                else :
+                    return render_template('simple_uploader.html', title='Upload file - database configuration failed')
             else :
                 return render_template('simple_uploader.html', title='Upload file - connection failed')
 
@@ -378,7 +427,11 @@ def route_upload_file_get():
                 config['neo4j']['password'] = tempo['neo4j']['password']
 
                 if neo4j_connection(config):
-                    return render_template('simple_uploader.html', title='Upload file - database connected')
+                    if install_config(config):
+                        return render_template('simple_uploader.html', title='Upload file - database connected')
+                    else :
+                        return render_template('simple_uploader.html', title='Upload file - database configuration failed')
+
                 else :
                     return render_template('simple_uploader.html', title='Upload file - connection failed')
 
@@ -416,5 +469,5 @@ config['driver'] = None
 if __name__ == "__main__":
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
-    app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
+    app.run(host='0.0.0.0', port='443', ssl_context=context, debug=True) #debug=True
     app.logger.info("instance name : %s", instance_number)
