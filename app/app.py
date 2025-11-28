@@ -207,8 +207,8 @@ def file_diff(uuid1, uuid2):
                 else :
                     data['identical'] = False
                     __end__ = True
-            return data
-    return data
+            return jsonify(data)
+    return jsonify(data)
 
 @app.route('/<uuid>/sha256', methods = ['GET'])
 def file_sha256(uuid):
@@ -301,6 +301,12 @@ def neo4j_connection(config):
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
+
+@app.route('/hooks/<id>', methods=['GET', 'POST'])
+def route_hook(id):
+    data = {'ok': 'ok'}
+    app.logger.info("hook : %s", id)
+    return jsonify(data)
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
