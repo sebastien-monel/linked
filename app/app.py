@@ -469,5 +469,5 @@ config['driver'] = None
 if __name__ == "__main__":
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
-    app.run(host='0.0.0.0', port='443', ssl_context=context, debug=True) #debug=True
+    app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
     app.logger.info("instance name : %s", instance_number)
