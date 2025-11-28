@@ -58,9 +58,7 @@ CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f)
 """
 
 query_get_file = """
-MATCH (dns:dns {name:$name}) 
-MATCH (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li) 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name})
 MERGE (lt:log_type {name:'access file'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
@@ -189,6 +187,27 @@ def digest(uuid, digest_name):
         digest = hashlib.file_digest(f, digest_name)
         data[digest_name] = digest.hexdigest()
         return data
+    return data
+
+@app.route('/<uuid1>/<uuid2>/diff', methods = ['GET'])
+def file_diff(uuid1, uuid2):
+    read_block_size = 512
+    data = {'uuid1': uuid1, 'uuid2': uuid2, 'identical' : False}
+    with open(app.config["UPLOAD_FOLDER"] + '/' + uuid1, 'rb') as f1:
+        with open(app.config["UPLOAD_FOLDER"] + '/' + uuid2, 'rb') as f2 :
+            __end__ = False
+            data['identical'] = True
+            while not(__end__):
+                data1 = f1.read(read_block_size)
+                data2 = f2.read(read_block_size)
+                if (len(data1) == 0):
+                    __end__ = True
+                elif (data1 == data2):
+                    pass
+                else :
+                    data['identical'] = False
+                    __end__ = True
+            return data
     return data
 
 @app.route('/<uuid>/sha256', methods = ['GET'])
