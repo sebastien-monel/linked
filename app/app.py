@@ -18,6 +18,7 @@ import json
 import math
 import ssl
 import uuid
+from uuid import UUID
 import hashlib
 
 #Errors :
@@ -250,9 +251,15 @@ def file_type(uuid):
 
 @app.route('/<uuid>', methods = ['GET'])
 def route_download_file(uuid):
-    file_name = neo4_get_file(config, uuid)
-    return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
+    try :
+        __uuid = UUID(uuid, version=1)
+    except TypeError:
+        abort(404)
+    except ValueError:
+        abort(404)
 
+    file_name = neo4_get_file(config, str(__uuid))
+    return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
 
 def is_ready(config):
     return (('key' in config)
