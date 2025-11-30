@@ -11,12 +11,21 @@ RUN useradd -ms /bin/bash web
 #Install requirements
 COPY requirements.txt /
 RUN apt-get update
-RUN apt-get install acl
+RUN apt-get install -y acl
+RUN apt-get install -y sudo
 RUN pip install -r /requirements.txt
 RUN rm /requirements.txt
 
+#!!!!!
+#RUN chmod 744 /etc/sudoers
+RUN echo "web ALL=(ALL) NOPASSWD:/scripts/gen_certs.sh" >> /etc/sudoers.d/gen_certs
+RUN echo "web ALL=(ALL) NOPASSWD:/scripts/revoke_certs.sh" >> /etc/sudoers.d/revoke_certs
+RUN echo "web ALL=(ALL) NOPASSWD:/scripts/chown_archive.sh" >> /etc/sudoers.d/chown_archive
+#!!!!
+
 #Install certs
 COPY app /app
+COPY scripts /scripts
 
 #Configure access write
 RUN chmod -R 750 /certs
@@ -31,20 +40,23 @@ RUN chown -R root:web /config
 RUN chmod -R 750 /app
 RUN chown -R root:web /app
 
-COPY boot.sh /
-RUN chmod -R 755 /boot.sh
-RUN chown -R root:web /boot.sh
+RUN chmod -R 750 /scripts
+RUN chown -R root:web /scripts
+#RUN chmod -R 4750 /scripts/*
+
+#COPY boot.sh /
+#RUN chmod -R 755 /boot.sh
+#RUN chown -R root:web /boot.sh
 
 #Change current user
-#USER web
+USER web
 
 #Docker config
 WORKDIR /app
 VOLUME /uploaded_files
 
 #Docker container start
-ENTRYPOINT ["/bin/bash"]
-CMD ["/boot.sh"]
+ENTRYPOINT ["/app/app.py"]
 
 #PREVIOUS config with gunicorn :
 #CMD ["gunicorn", "--bind", "0.0.0.0:443", "--workers", "1", "--timeout","60", "--certfile", "/certs/fullchain.pem", "--keyfile", "/certs/privkey.pem", "app:app"]

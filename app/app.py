@@ -370,6 +370,9 @@ def route_upload_file_get():
             try :
                 file_uuid = str(uuid.uuid1())
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
+                archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
+                logs = os.system(archive_cmd)
+                app.logger.info("summary : %s", archive_cmd)
                 neo4_log_file(config, filename, file_uuid)
                 return render_template('simple_uploader.html', title='Upload file')
             except PermissionError:
@@ -474,7 +477,20 @@ config['driver'] = None
 
 #this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
-    app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
-    app.logger.info("instance name : %s", instance_number)
+    try :
+        dns_name = os.environ['INSTANCE_DNS']
+        print("dns_name : %s" % (dns_name))
+        logs = os.system("/usr/bin/sudo /scripts/gen_certs.sh %s" % (dns_name))
+    finally:
+        print(logs)
+
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
+    except FileNotFoundError:
+        app.run(host='0.0.0.0', port='443') #debug=True
+        app.logger.info("!!! no certs found !!!", instance_number)
+    else:
+        app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
+    finally :
+        app.logger.info("instance name : %s", instance_number)
