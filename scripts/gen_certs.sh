@@ -1,14 +1,11 @@
 #/bin/sh
 
-INSTANCE_DNS=$1
-
-if [ -z "$1" ]; then
+INSTANCE_DNS=`echo "$1" | grep -E "^[a-zA-Z0-9._-]*$"`
+if [ -z "$INSTANCE_DNS" ]; then
     echo "Usage : $0 [DNS NAME]"
     exit 1
 fi
 
-ls -la /scripts/
-whoami
 date
 
 if [ ! -d "/etc/letsencrypt/live/$INSTANCE_DNS" ] ; then

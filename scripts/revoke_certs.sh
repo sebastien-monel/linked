@@ -3,13 +3,14 @@
 INSTANCE_DNS=$1
 REASON=$2
 
-if [ -z "$1" ]; then
+INSTANCE_DNS=`echo "$1" | grep -E "^[a-zA-Z0-9._-]*$"`
+if [ -z "$INSTANCE_DNS" ]; then
     echo "Usage : $0 [DNS NAME] [Revoke Reason]"
     echo " Revoke Reason : keyCompromise, superseded (certificat replaced)"
     exit 1
 fi
 
-if [ -z "$1" ]; then
+if [ -z "$REASON" ]; then
     echo "Usage : $0 [DNS NAME] [Revoke Reason]"
     echo " Revoke Reason : keyCompromise, superseded (certificat replaced)"
     exit 1

@@ -17,10 +17,17 @@ RUN pip install -r /requirements.txt
 RUN rm /requirements.txt
 
 #!!!!!
+#RUN echo "Plugin sudoers_policy sudoers.so" >> /etc/sudo.conf
+#RUN echo "Plugin sudoers_io sudoers.so" >> /etc/sudo.conf
+#RUN echo "Debug sudo /var/log/sudo_debug all@debug" >> /etc/sudo.conf
+#RUN echo "Debug sudoers.so /var/log/sudoers_debug all@debug" >> /etc/sudo.conf
+
 #RUN chmod 744 /etc/sudoers
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/gen_certs.sh" >> /etc/sudoers.d/gen_certs
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/revoke_certs.sh" >> /etc/sudoers.d/revoke_certs
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/chown_archive.sh" >> /etc/sudoers.d/chown_archive
+#RUN echo "web ALL=(ALL) NOPASSWD:/usr/bin/su" >> /etc/sudoers.d/su
+#RUN echo "web ALL=(ALL) NOPASSWD:/usr/bin/cat" >> /etc/sudoers.d/cat
 #!!!!
 
 #Install certs
