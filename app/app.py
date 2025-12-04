@@ -78,6 +78,22 @@ ORDER BY f.creation_date DESC
 LIMIT 2
 """
 
+query_get_file_infos = """
+MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+RETURN f.file as file_name, 
+    ft.name as file_type, 
+    ft.ext as type_ext, 
+    ft.precision as type_precision 
+ORDER BY f.creation_date DESC 
+LIMIT 2
+"""
+
+query_post_file_type = """
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}), 
+(ft:file_type {name: $file_type}) 
+MERGE (ft)<-[:is]-(f)
+"""
+
 def save_config_file(config):
     token = ''
     neo4j_password = ''
@@ -229,8 +245,29 @@ def route_file_sha256(uuid):
 def route_file_sha512(uuid):
     return jsonify(digest(uuid, "sha512"))
 
+@app.route('/<uuid>/type', methods = ['POST'])
+def route_file_post_type(uuid):
+    data = {'uuid': uuid}
+
+    if ((len(request.values) != 0) and ('file_type' in request.values) and (request.values['file_type'] != "")
+        and ('token' in request.values) and (request.values['token'] != config['token'])):
+        results = config['driver'].execute_query(
+            query_post_file_type,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= instance_number,
+            file_uuid= uuid,
+            file_type= request.values['file_type']
+        ).summary
+
+        data['result_available_after'] = results.result_available_after
+        app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    else :
+        app.logger.info("No file_type")
+
+    return jsonify(data)
+
 @app.route('/<uuid>/type', methods = ['GET'])
-def route_file_type(uuid):
+def route_file_get_type(uuid):
     data = {'uuid': uuid}
     results = config['driver'].execute_query(
         query_get_file_type,
@@ -247,6 +284,28 @@ def route_file_type(uuid):
         break
 
     #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return jsonify(data)
+
+@app.route('/<uuid>/infos', methods = ['POST'])
+def route_file_get_infos(uuid):
+    data = {'uuid': uuid}
+
+    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] != config['token'])):
+        results = config['driver'].execute_query(
+            query_get_file_infos,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= instance_number,
+            file_uuid= uuid
+        )
+
+        for result in results.records:
+            data_line = result.data()
+            data['file_name'] = data_line['file_name']
+            data['type_precision'] = data_line['type_precision']
+            data['type_ext'] = data_line['type_ext']
+            data['file_type'] = data_line['file_type']
+            break
+
     return jsonify(data)
 
 @app.route('/<uuid>', methods = ['GET'])
@@ -368,13 +427,17 @@ def route_upload_file_get():
             file = request.files['file']
             filename = secure_filename(file.filename)
             try :
+                data = {}
                 file_uuid = str(uuid.uuid1())
+                data['uuid'] = file_uuid
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
                 archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
                 logs = os.system(archive_cmd)
                 app.logger.info("summary : %s", archive_cmd)
                 neo4_log_file(config, filename, file_uuid)
-                return render_template('simple_uploader.html', title='Upload file')
+                #return render_template('simple_uploader.html', title='Upload file')
+                return jsonify(data)
+
             except PermissionError:
                 return render_template('simple_uploader.html', title='Upload file - permission error')
 
