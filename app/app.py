@@ -250,7 +250,7 @@ def route_file_post_type(uuid):
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('file_type' in request.values) and (request.values['file_type'] != "")
-        and ('token' in request.values) and (request.values['token'] != config['token'])):
+        and ('token' in request.values) and (request.values['token'] == config['token'])):
         results = config['driver'].execute_query(
             query_post_file_type,
             name= os.environ['INSTANCE_DNS'],
@@ -290,7 +290,7 @@ def route_file_get_type(uuid):
 def route_file_get_infos(uuid):
     data = {'uuid': uuid}
 
-    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] != config['token'])):
+    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
         results = config['driver'].execute_query(
             query_get_file_infos,
             name= os.environ['INSTANCE_DNS'],
