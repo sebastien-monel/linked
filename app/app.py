@@ -44,7 +44,7 @@ ON CREATE SET lt.creation_date= datetime()
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(li) 
 """
 
-query_file = """
+query_put_file = """
 MERGE (dns:dns {name:$name}) 
 ON CREATE SET dns.creation_date= datetime() 
 MERGE (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
@@ -201,7 +201,7 @@ def digest(uuid, digest_name):
     return data
 
 @app.route('/<uuid1>/<uuid2>/diff', methods = ['GET'])
-def file_diff(uuid1, uuid2):
+def route_file_diff(uuid1, uuid2):
     read_block_size = 512
     data = {'uuid1': uuid1, 'uuid2': uuid2, 'identical' : False}
     with open(app.config["UPLOAD_FOLDER"] + '/' + uuid1, 'rb') as f1:
@@ -222,15 +222,15 @@ def file_diff(uuid1, uuid2):
     return jsonify(data)
 
 @app.route('/<uuid>/sha256', methods = ['GET'])
-def file_sha256(uuid):
+def route_file_sha256(uuid):
     return jsonify(digest(uuid, "sha256"))
 
 @app.route('/<uuid>/sha512', methods = ['GET'])
-def file_sha512(uuid):
+def route_file_sha512(uuid):
     return jsonify(digest(uuid, "sha512"))
 
 @app.route('/<uuid>/type', methods = ['GET'])
-def file_type(uuid):
+def route_file_type(uuid):
     data = {'uuid': uuid}
     results = config['driver'].execute_query(
         query_get_file_type,
@@ -303,7 +303,7 @@ def verify_post_file(request):
 
 def neo4_log_file(config, file, file_uuid):
     results = config['driver'].execute_query(
-        query_file,
+        query_put_file,
         name= os.environ['INSTANCE_DNS'],
         instance_number= instance_number,
         file= file,
