@@ -52,7 +52,8 @@ ON CREATE SET li.creation_date= datetime()
 MERGE (f:file {file_uuid: $file_uuid})-[:in]->(li) 
 ON CREATE SET 
     f.creation_date= datetime(), 
-    f.file= $file 
+    f.file= $file, 
+    f.sha256 = $sha256 
 MERGE (lt:log_type {name:'log file'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
@@ -216,12 +217,10 @@ def decrypt(encrypted_message, key, iv):
     return decryptor.update(encrypted_message) + decryptor.finalize() #message
 
 def digest(uuid, digest_name):
-    data = {'uuid': uuid}
     with open(app.config["UPLOAD_FOLDER"] + '/' + uuid, 'rb') as f:
         digest = hashlib.file_digest(f, digest_name)
-        data[digest_name] = digest.hexdigest()
-        return data
-    return data
+        return digest.hexdigest()
+    return ""
 
 @app.route('/<uuid1>/<uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):
@@ -246,11 +245,15 @@ def route_file_diff(uuid1, uuid2):
 
 @app.route('/<uuid>/sha256', methods = ['GET'])
 def route_file_sha256(uuid):
-    return jsonify(digest(uuid, "sha256"))
+    data = {'uuid': uuid}
+    data['sha256'] = digest(uuid, "sha256")
+    return jsonify(data)
 
 @app.route('/<uuid>/sha512', methods = ['GET'])
 def route_file_sha512(uuid):
-    return jsonify(digest(uuid, "sha512"))
+    data = {'uuid': uuid}
+    data['sha512'] = digest(uuid, "sha512")
+    return jsonify(data)
 
 @app.route('/<uuid>/type', methods = ['POST'])
 def route_file_post_type(uuid):
@@ -388,13 +391,14 @@ def verify_post_file(request):
         and ('token' in request.values)
     )
 
-def neo4_log_file(config, file, file_uuid):
+def neo4_log_file(config, file, file_uuid, sha256):
     results = config['driver'].execute_query(
         query_put_file,
         name= os.environ['INSTANCE_DNS'],
         instance_number= instance_number,
         file= file,
-        file_uuid= file_uuid
+        file_uuid= file_uuid,
+        sha256=sha256
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
@@ -460,8 +464,9 @@ def route_upload_file_get():
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
                 archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
                 logs = os.system(archive_cmd)
+                data['sha256'] = digest(data['uuid'], "sha256")
                 app.logger.info("summary : %s", archive_cmd)
-                neo4_log_file(config, filename, file_uuid)
+                neo4_log_file(config, filename, file_uuid, data['sha256'])
                 #return render_template('simple_uploader.html', title='Upload file')
                 return jsonify(data)
 
