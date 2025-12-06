@@ -94,6 +94,13 @@ MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:d
 MERGE (ft)<-[:is]-(f)
 """
 
+query_post_file_location = """
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name})
+MERGE (loc:location {location: $location}) 
+ON CREATE SET loc.creation_date= datetime() 
+MERGE (loc)<-[:in]-(f)
+"""
+
 def save_config_file(config):
     token = ''
     neo4j_password = ''
@@ -266,6 +273,27 @@ def route_file_post_type(uuid):
 
     return jsonify(data)
 
+@app.route('/<uuid>/location', methods = ['POST'])
+def route_file_post_location(uuid):
+    data = {'uuid': uuid}
+
+    if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")
+        and ('token' in request.values) and (request.values['token'] == config['token'])):
+        results = config['driver'].execute_query(
+            query_post_file_location,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= instance_number,
+            file_uuid= uuid,
+            location= request.values['location']
+        ).summary
+
+        data['result_available_after'] = results.result_available_after
+        app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    else :
+        app.logger.info("No location")
+
+    return jsonify(data)
+
 @app.route('/<uuid>/type', methods = ['GET'])
 def route_file_get_type(uuid):
     data = {'uuid': uuid}
@@ -398,12 +426,11 @@ def neo4j_connection(config):
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
 
-@app.route('/hooks/<id>', methods=['GET', 'POST'])
-def route_hook(id):
+@app.route('/<id>/hooks', methods=['GET', 'POST'])
+def route_hooks(id):
     data = {'ok': 'ok'}
     app.logger.info("hook : %s", id)
     return jsonify(data)
-
 
 def install_config(config):
     query = ""
