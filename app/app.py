@@ -96,10 +96,34 @@ MERGE (ft)<-[:is]-(f)
 """
 
 query_post_file_location = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name})
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
 MERGE (loc:location {location: $location}) 
 ON CREATE SET loc.creation_date= datetime() 
 MERGE (loc)<-[:in]-(f)
+"""
+
+query_post_file_infos = """
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MERGE (loc:location {location: $location}) 
+ON CREATE SET loc.creation_date= datetime() 
+MERGE (pwd:location {location: $pwd}) 
+ON CREATE SET pwd.creation_date= datetime() 
+MERGE (machine:machine {name: $machine}) 
+ON CREATE SET machine.creation_date= datetime() 
+MERGE (user:system_user {name: $user, machine: $machine}) 
+ON CREATE SET user.creation_date= datetime() 
+MERGE (owner:system_user {name: $owner, machine: $machine}) 
+ON CREATE SET owner.creation_date= datetime() 
+MERGE (mode:mode {mode: $mode}) 
+ON CREATE SET mode.creation_date= datetime() 
+MERGE (loc)<-[:in]-(f) 
+MERGE (mode)<-[:mode]-(f) 
+MERGE (owner)<-[:owner]-(f) 
+MERGE (user)<-[:by]-(f) 
+MERGE (pwd)<-[:from]-(f) 
+MERGE (machine)<-[:in]-(owner) 
+MERGE (machine)<-[:in]-(user) 
+SET f.size = $size
 """
 
 def save_config_file(config):
@@ -318,26 +342,49 @@ def route_file_get_type(uuid):
     return jsonify(data)
 
 @app.route('/<uuid>/infos', methods = ['POST'])
-def route_file_get_infos(uuid):
+def route_file_post_infos(uuid):
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        results = config['driver'].execute_query(
-            query_get_file_infos,
-            name= os.environ['INSTANCE_DNS'],
-            instance_number= instance_number,
-            file_uuid= uuid
-        )
+        if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")):
+            results = config['driver'].execute_query(
+                query_post_file_infos,
+                name= os.environ['INSTANCE_DNS'],
+                instance_number= instance_number,
+                file_uuid= uuid,
+                owner= request.values['owner'],
+                mode= request.values['mode'],
+                user= request.values['user'],
+                pwd= request.values['pwd'],
+                size= request.values['size'],
+                location= request.values['location'],
+                machine= request.values['machine']
+            ).summary
 
-        for result in results.records:
-            data_line = result.data()
-            data['file_name'] = data_line['file_name']
-            data['type_precision'] = data_line['type_precision']
-            data['type_ext'] = data_line['type_ext']
-            data['file_type'] = data_line['file_type']
-            break
+            data['result_available_after'] = results.result_available_after
+            app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+
+        else :
+            results = config['driver'].execute_query(
+                query_get_file_infos,
+                name= os.environ['INSTANCE_DNS'],
+                instance_number= instance_number,
+                file_uuid= uuid
+            )
+
+            for result in results.records:
+                data_line = result.data()
+                data['file_name'] = data_line['file_name']
+                data['type_precision'] = data_line['type_precision']
+                data['type_ext'] = data_line['type_ext']
+                data['file_type'] = data_line['file_type']
+                break
+
+    else :
+        data["error"] = "no token"
 
     return jsonify(data)
+
 
 @app.route('/<uuid>', methods = ['GET'])
 def route_download_file(uuid):
