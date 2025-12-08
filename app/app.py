@@ -34,6 +34,26 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 instance_number = os.urandom(32).hex()
 
+query_full_backup_first_file = """
+MATCH (n:file)-[:in]->(:linked_instance)-[:in]->(dns:dns {name:$name}) 
+RETURN n.file_uuid as uuid, 
+    n.creation_date as creation_date 
+ORDER BY n.creation_date, n.file_uuid 
+LIMIT 1
+"""
+
+query_next_backup = """
+MATCH (n:file {file_uuid: $file_uuid})-[:in]->(:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (n_next:file)-[:in]->(:linked_instance)-[:in]->(dns) 
+WHERE n_next.creation_date >= n.creation_date 
+AND n_next.file_uuid <> n.file_uuid 
+RETURN n_next.file_uuid as next_uuid, 
+    n_next.creation_date as next, 
+    n.creation_date as actual 
+ORDER BY n_next.creation_date, n_next.file_uuid 
+LIMIT 10
+"""
+
 query_startup = """
 MERGE (dns:dns {name:$name}) 
 ON CREATE SET dns.creation_date= datetime() 
@@ -340,6 +360,48 @@ def route_file_get_type(uuid):
 
     #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return jsonify(data)
+
+@app.route('/full_backup_first_file', methods = ['POST'])
+def route_file_get_full_backup_first_file():
+    data = {}
+    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
+        results = config['driver'].execute_query(
+            query_full_backup_first_file,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= instance_number
+        )
+
+        for result in results.records:
+            data_line = result.data()
+            data['uuid'] = data_line['uuid']
+            #data['next'] = data_line['next']
+            #data['actual'] = data_line['actual']
+            break
+
+    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return jsonify(data)
+
+@app.route('/<uuid>/next_backup', methods = ['POST'])
+def route_file_get_next_backup(uuid):
+    data = {'uuid': uuid}
+    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
+
+        results = config['driver'].execute_query(
+            query_next_backup,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= instance_number,
+            file_uuid= uuid
+        )
+
+        for result in results.records:
+            data_line = result.data()
+            data['next_uuid'] = data_line['next_uuid']
+            #data['next'] = data_line['next']
+            #data['actual'] = data_line['actual']
+            break
+
+        #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+        return jsonify(data)
 
 @app.route('/<uuid>/infos', methods = ['POST'])
 def route_file_post_infos(uuid):
