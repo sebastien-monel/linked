@@ -385,6 +385,44 @@ def route_file_post_infos(uuid):
 
     return jsonify(data)
 
+@app.route('/<uuid>/execute_query', methods = ['POST'])
+def route_execute_query(uuid):
+    app.logger.info("here")
+    try :
+        __uuid = UUID(uuid, version=1)
+    except TypeError:
+        abort(404)
+    except ValueError:
+        abort(404)
+
+    data = {}
+    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
+        file_name = neo4_get_file(config, str(__uuid))
+
+        query = ""
+        with open(app.config["UPLOAD_FOLDER"] + '/' + str(__uuid), 'rt') as f :
+            query = f.read()
+
+        if (len(query) == 0):
+            data['error'] == 'not found'
+            return jsonify(data)
+
+        data['records'], summary, data['keys'] = config['driver'].execute_query(
+            query
+        )
+
+        app.logger.info("summary : %s ms", summary.result_available_after)
+        app.logger.info("keys : %s", data['keys'])
+        #app.logger.info("summary : %s ms", data['records'].summary.result_available_after)
+        return jsonify(data)
+
+    elif ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
+        app.logger.info("token error")
+        data['error'] == 'token error'
+        return jsonify(data)
+
+    abort(404)
+    return jsonify(data)
 
 @app.route('/<uuid>', methods = ['GET'])
 def route_download_file(uuid):
