@@ -592,9 +592,9 @@ def neo4j_connection(config):
 @app.route('/<hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
     data = {'hook_name': hook_name}
-    received_data = "test data"
-    #if ():
-    #    received_data = "data"
+    received_data = "not a json"
+    if (request.is_json):
+        received_data =  ", ".join(request.json)
     #data['len(request)'] = len(request.values)
     #for value in request.values:
     #    data[value] = request.values[value]
@@ -605,7 +605,8 @@ def route_hooks(hook_name):
         instance_number= instance_number,
         hook_name= hook_name,
         ip= request.remote_addr,
-        data= ", ".join(request.values)
+        #data= ", ".join(request.values)
+        data=received_data
     ).summary
     return jsonify(data)
 
