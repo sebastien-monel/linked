@@ -122,6 +122,18 @@ ON CREATE SET loc.creation_date= datetime()
 MERGE (loc)<-[:in]-(f)
 """
 
+query_hooks = """
+MATCH (li:linked_instance {instance_number: $instance_number})
+MERGE (lt:log_type {name: "hook"}) 
+ON CREATE SET lt.creation_date= datetime() 
+MERGE (hook:hook {name: $hook_name}) 
+ON CREATE SET hook.creation_date= datetime() 
+MERGE (ip:ip {name: $ip}) 
+ON CREATE SET ip.creation_date= datetime() 
+CREATE (ip)<-[:from]-(log:log {creation_date: datetime(), data: $data})-[:is]->(lt) 
+CREATE (li)<-[:log]-(log)-[:from]->(hook)
+"""
+
 query_post_file_infos = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
 MERGE (loc:location {location: $location}) 
@@ -577,10 +589,24 @@ def neo4j_connection(config):
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
 
-@app.route('/<id>/hooks', methods=['GET', 'POST'])
-def route_hooks(id):
-    data = {'ok': 'ok'}
-    app.logger.info("hook : %s", id)
+@app.route('/<hook_name>/hooks', methods=['GET', 'POST'])
+def route_hooks(hook_name):
+    data = {'hook_name': hook_name}
+    received_data = "test data"
+    #if ():
+    #    received_data = "data"
+    #data['len(request)'] = len(request.values)
+    #for value in request.values:
+    #    data[value] = request.values[value]
+    app.logger.info("hook : %s - %s", hook_name, ", ".join(request.values))
+    results = config['driver'].execute_query(
+        query_hooks,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        hook_name= hook_name,
+        ip= request.remote_addr,
+        data= ", ".join(request.values)
+    ).summary
     return jsonify(data)
 
 def install_config(config):
