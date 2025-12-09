@@ -123,7 +123,7 @@ MERGE (loc)<-[:in]-(f)
 """
 
 query_hooks = """
-MATCH (li:linked_instance {instance_number: $instance_number})
+MATCH (li:linked_instance {instance_number: $instance_number}) 
 MERGE (lt:log_type {name: "hook"}) 
 ON CREATE SET lt.creation_date= datetime() 
 MERGE (hook:hook {name: $hook_name}) 
@@ -132,6 +132,17 @@ MERGE (ip:ip {name: $ip})
 ON CREATE SET ip.creation_date= datetime() 
 CREATE (ip)<-[:from]-(log:log {creation_date: datetime(), data: $data})-[:is]->(lt) 
 CREATE (li)<-[:log]-(log)-[:from]->(hook)
+"""
+
+query_logs = """
+MATCH (li:linked_instance {instance_number: $instance_number}) 
+MERGE (lt:log_type {name: "logs"}) 
+ON CREATE SET lt.creation_date= datetime() 
+MERGE (ip:ip {name: $ip}) 
+ON CREATE SET ip.creation_date= datetime() 
+CREATE (ip)<-[:from]-(log:log {creation_date: datetime(), data: $data})-[:is]->(lt) 
+CREATE (li)<-[:log]-(log)
+RETURN ip.status as status
 """
 
 query_post_file_infos = """
@@ -610,6 +621,24 @@ def route_hooks(hook_name):
     ).summary
     return jsonify(data)
 
+def logging(request):
+    if (('driver' not in config) or (('driver' in config) and (config['driver'] == None))) :
+        return True
+
+    results = config['driver'].execute_query(
+        query_logs,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= request.remote_addr,
+        data= ", ".join(request.values)
+    )
+
+    for result in results.records:
+        data = result.data()
+        if (('status' in data) and (data['status'] == 'banned')) :
+            return False
+    return True
+
 def install_config(config):
     query = ""
     with open("/app/cypher/file_types.cypher", 'rt') as f :
@@ -627,6 +656,9 @@ def install_config(config):
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
+    if not(logging(request)):
+        abort(404)
+
     if is_ready(config) : #is_ready
         if ( verify_post_file(request) and (request.values['token'] == config['token'] ) ): #verify_post_file
             file = request.files['file']
