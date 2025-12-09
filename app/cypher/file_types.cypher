@@ -7,6 +7,11 @@ MERGE (t3:file_type {name:"public certificate"})
     ON MATCH SET t3.precision = 'low'
 MERGE (t3)-[:is]->(t1)
 
+MERGE (t31:file_type {name:"ssh public certificate"})
+    ON CREATE SET t31.creation_date= datetime(), t31.precision = 'high'
+    ON MATCH SET t31.precision = 'high'
+MERGE (t31)-[:is]->(t3)
+
 MERGE (t4:file_type {name:"text", ext:"txt"})
     ON CREATE SET t4.creation_date= datetime(), t4.precision = 'low'
     ON MATCH SET t4.precision = 'low'
