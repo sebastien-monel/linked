@@ -101,10 +101,16 @@ LIMIT 2
 
 query_get_file_infos = """
 MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (su:system_user)<-[:owner]-(f)-[:mode]->(m:mode)
+MATCH (proj:location)<-[:from]-(f)-[:in]->(loc:location)
 RETURN f.file as file_name, 
     ft.name as file_type, 
     ft.ext as type_ext, 
-    ft.precision as type_precision 
+    ft.precision as type_precision, 
+    loc.location as location, 
+    proj.location as proj, 
+    m.numeric as mode, 
+    su.name as user 
 ORDER BY f.creation_date DESC 
 LIMIT 2
 """
@@ -463,6 +469,10 @@ def route_file_post_infos(uuid):
                 data['type_precision'] = data_line['type_precision']
                 data['type_ext'] = data_line['type_ext']
                 data['file_type'] = data_line['file_type']
+                data['location'] = data_line['location']
+                data['proj'] = data_line['proj']
+                data['mode'] = data_line['mode']
+                data['user'] = data_line['user']
                 break
 
     else :
