@@ -2,6 +2,11 @@ MERGE (t1:file_type {name:"binary"})
     ON CREATE SET t1.creation_date= datetime(), t1.precision = 'low'
     ON MATCH SET t1.precision = 'low'
 
+MERGE (t2:file_type {name:"base64"})
+    ON CREATE SET t2.creation_date= datetime(), t2.precision = 'low'
+    ON MATCH SET t2.precision = 'low'
+MERGE (t2)-[:is]->(t1)
+
 MERGE (t3:file_type {name:"public certificate"})
     ON CREATE SET t3.creation_date= datetime(), t3.precision = 'low'
     ON MATCH SET t3.precision = 'low'
@@ -11,6 +16,21 @@ MERGE (t31:file_type {name:"ssh public certificate"})
     ON CREATE SET t31.creation_date= datetime(), t31.precision = 'high'
     ON MATCH SET t31.precision = 'high'
 MERGE (t31)-[:is]->(t3)
+
+MERGE (t32:file_type {name:"ssl public certificate"})
+    ON CREATE SET t32.creation_date= datetime(), t32.precision = 'medium'
+    ON MATCH SET t32.precision = 'medium'
+MERGE (t32)-[:is]->(t3)
+
+MERGE (t321:file_type {name:"PEM ssl public certificate"})
+    ON CREATE SET t321.creation_date= datetime(), t321.precision = 'high'
+    ON MATCH SET t321.precision = 'high'
+MERGE (t321)-[:is]->(t32)
+
+MERGE (t322:file_type {name:"DER ssl public certificate"})
+    ON CREATE SET t322.creation_date= datetime(), t322.precision = 'high'
+    ON MATCH SET t322.precision = 'high'
+MERGE (t322)-[:is]->(t32)
 
 MERGE (t4:file_type {name:"text", ext:"txt"})
     ON CREATE SET t4.creation_date= datetime(), t4.precision = 'low'
