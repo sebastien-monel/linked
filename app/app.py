@@ -35,7 +35,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 instance_number = os.urandom(32).hex()
 
 query_full_backup_first_file = """
-MATCH (n:file)-[:in]->(:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (n:file)-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 RETURN n.file_uuid as uuid, 
     n.creation_date as creation_date 
 ORDER BY n.creation_date, n.file_uuid 
@@ -43,7 +43,7 @@ LIMIT 1
 """
 
 query_next_backup = """
-MATCH (n:file {file_uuid: $file_uuid})-[:in]->(:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (n:file {file_uuid: $file_uuid})-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MATCH (n_next:file)-[:in]->(:linked_instance)-[:in]->(dns) 
 WHERE n_next.creation_date >= n.creation_date 
 AND n_next.file_uuid <> n.file_uuid 
@@ -55,7 +55,7 @@ LIMIT 10
 """
 
 query_startup = """
-MERGE (dns:dns {name:$name}) 
+MERGE (dns:machine {dns:$name}) 
 ON CREATE SET dns.creation_date= datetime() 
 MERGE (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
 ON CREATE SET li.creation_date= datetime() 
@@ -65,7 +65,7 @@ CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(li)
 """
 
 query_put_file = """
-MERGE (dns:dns {name:$name}) 
+MERGE (dns:machine {dns:$name}) 
 ON CREATE SET dns.creation_date= datetime() 
 MERGE (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
 ON CREATE SET li.creation_date= datetime() 
@@ -80,7 +80,7 @@ CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f)
 """
 
 query_get_file = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (lt:log_type {name:'access file'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
@@ -90,7 +90,7 @@ LIMIT 2
 """
 
 query_get_file_type = """
-MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (lt:log_type {name:'access file type'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
@@ -100,7 +100,7 @@ LIMIT 2
 """
 
 query_get_file_infos = """
-MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MATCH (su:system_user)<-[:owner]-(f)-[:mode]->(m:mode)
 MATCH (proj:location)<-[:from]-(f)-[:in]->(loc:location)
 RETURN f.file as file_name, 
@@ -116,13 +116,13 @@ LIMIT 2
 """
 
 query_post_file_type = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}), 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}), 
 (ft:file_type {name: $file_type}) 
 MERGE (ft)<-[:is]-(f)
 """
 
 query_post_file_location = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (loc:location {location: $location}) 
 ON CREATE SET loc.creation_date= datetime() 
 MERGE (loc)<-[:in]-(f)
@@ -152,7 +152,7 @@ RETURN ip.status as status
 """
 
 query_post_file_infos = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:dns {name:$name}) 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (loc:location {location: $location}) 
 ON CREATE SET loc.creation_date= datetime() 
 MERGE (pwd:location {location: $pwd}) 
