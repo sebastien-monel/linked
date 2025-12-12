@@ -24,6 +24,7 @@ import ssl
 import uuid
 from uuid import UUID
 import hashlib
+import base64
 
 import string
 import random
@@ -35,9 +36,15 @@ from json.decoder import JSONDecodeError
 UPLOAD_FOLDER = '/uploaded_files'
 #ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'py', 'exe', 'ipynb', 'zip', 'tar', 'sh', ''}
 
-app = Flask(__name__, static_url_path="")
+app = Flask(__name__, static_url_path="/static/", static_folder="/app/static/")
 app.secret_key = os.urandom(32)  # Used for session.
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+#fido2.features.webauthn_json_mapping.enabled = True #TO_REMOVE
+
+###
+###rp = PublicKeyCredentialRpEntity(name="env name", id="...dns...")
+###server = Fido2Server(rp)
 
 instance_number = os.urandom(32).hex()
 
@@ -162,7 +169,7 @@ query_token_register = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
 MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip:ip {name: $ip}) 
 MATCH (p:personne) 
-CREATE (t:token) 
+MERGE (t:token) 
 SET 
     ck.last_date= datetime(), 
     t.creation_date= datetime(), 
@@ -219,7 +226,8 @@ ON CREATE SET
     ck.last_date= datetime(), 
     ck.session_state= 'opening' 
 ON MATCH SET ck.last_date= datetime() 
-MERGE (li)<-[:to]-(ck)-[:from]->(ip) 
+MERGE (li)<-[:to]-(ck) 
+MERGE (ck)-[:from]->(ip) 
 RETURN 
     ip.status as ip_status, 
     ck.session_state as session_state, 
@@ -813,10 +821,10 @@ def route_register_begin():
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
-    if session_data['session']['state'] != 'valid':
-        resp = make_response(redirect('/api/login'))
-        resp.set_cookie('session_name', session_data['session']['name'])
-        return resp
+    #if session_data['session']['state'] != 'valid':
+    #    resp = make_response(redirect('/api/login'))
+    #    resp.set_cookie('session_name', session_data['session']['name'])
+    #    return resp
 
     options, state = server.register_begin(
         PublicKeyCredentialUserEntity(
@@ -824,7 +832,7 @@ def route_register_begin():
             name= session_data['user']['name'],
             display_name= session_data['user']['display'],
         ),
-        credentials,
+        [], #credentials,
         user_verification= session_data['token']['user_verification'],
         authenticator_attachment= session_data['token']['authenticator_attachment'],
     )
@@ -854,10 +862,10 @@ def route_register_complete():
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
-    if session_data['session']['state'] != 'valid':
-        resp = make_response(redirect('/api/login'))
-        resp.set_cookie('session_name', session_data['session']['name'])
-        return resp
+    #if session_data['session']['state'] != 'valid':
+    #    resp = make_response(redirect('/api/login'))
+    #    resp.set_cookie('session_name', session_data['session']['name'])
+    #    return resp
 
     response = request.json
     state = {
@@ -896,12 +904,17 @@ def route_authenticate_begin():
 
     options, state = server.authenticate_begin([cred_data])
 
+    session_data['session']['challenge'] = state['challenge']
+    session_data['session']['user_verification'] = state['user_verification']
+
     results = config['driver'].execute_query(
         query_token_auth,
         dns= os.environ['INSTANCE_DNS'],
         instance_number= instance_number,
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
+        challenge= session_data['session']['challenge'],
+        user_verification= session_data['session']['user_verification']
     )
 
     for result in results.records:
