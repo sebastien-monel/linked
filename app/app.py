@@ -12,6 +12,10 @@ from neo4j.exceptions import DriverError, Neo4jError
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 
+from fido2.webauthn import PublicKeyCredentialRpEntity, PublicKeyCredentialUserEntity, AttestedCredentialData
+from fido2.server import Fido2Server
+import fido2.features
+
 import os
 import sys
 import json
@@ -20,6 +24,9 @@ import ssl
 import uuid
 from uuid import UUID
 import hashlib
+
+import string
+import random
 
 #Errors :
 from cryptography.exceptions import InvalidKey
@@ -151,6 +158,84 @@ CREATE (li)<-[:log]-(log)
 RETURN ip.status as status
 """
 
+query_token_register = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip:ip {name: $ip}) 
+MATCH (p:personne) 
+CREATE (t:token) 
+SET 
+    ck.last_date= datetime(), 
+    t.creation_date= datetime(), 
+    t.state= 'challenge',
+    t.challenge = $challenge, 
+    t.user_verification = $user_verification
+"""
+
+query_token_register_complete = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip:ip {name: $ip}) 
+MATCH (p:personne) 
+MATCH (t:token) 
+SET 
+    ck.last_date= datetime(), 
+    t.state='valid', 
+    t.complete_date = datetime(), 
+    t.credential_data = $credential_data
+"""
+
+query_token_auth = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip:ip {name: $ip}) 
+MATCH (p:personne) 
+MATCH (t:token) 
+SET 
+    ck.last_date= datetime(), 
+    ck.auth_challenge_date= datetime(),
+    ck.session_state= 'challenge', 
+    ck.challenge = $challenge, 
+    ck.user_verification = $user_verification
+"""
+
+query_token_auth_complete = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip:ip {name: $ip}) 
+MATCH (p:personne) 
+MATCH (t:token) 
+SET 
+    ck.last_date= datetime(), 
+    ck.auth_complete= datetime(),
+    ck.session_state= 'valid'
+"""
+
+query_session_check = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+OPTIONAL MATCH (t:token) 
+OPTIONAL MATCH (p:personne) 
+MERGE (ip:ip {name: $ip}) 
+ON CREATE SET ip.creation_date= datetime() 
+MERGE (ck:cookie {session_name: $session_name}) 
+ON CREATE SET 
+    ck.creation_date= datetime(), 
+    ck.last_date= datetime(), 
+    ck.session_state= 'opening' 
+ON MATCH SET ck.last_date= datetime() 
+MERGE (li)<-[:to]-(ck)-[:from]->(ip) 
+RETURN 
+    ip.status as ip_status, 
+    ck.session_state as session_state, 
+    ck.session_name as session_name, 
+    ck.challenge as session_challenge, 
+    ck.user_verification as session_user_verification, 
+    t.challenge as token_challenge, 
+    t.state as token_state, 
+    t.credential_data as token_credential_data, 
+    coalesce(t.user_verification, 'discouraged') as token_user_verification, 
+    coalesce(t.authenticator_attachment, 'cross-platform') as token_authenticator_attachment, 
+    p.user_id as user_id, 
+    p.mail as user_name, 
+    p.prenom as user_display_name
+"""
+
 query_post_file_infos = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (loc:location {location: $location}) 
@@ -174,6 +259,10 @@ MERGE (machine)<-[:in]-(owner)
 MERGE (machine)<-[:in]-(user) 
 SET f.size = $size
 """
+
+def gen_rand(length = 64):
+    chars = string.ascii_uppercase + string.ascii_lowercase + string.digits #to_review
+    return ''.join(random.choice(chars) for _ in range(length))
 
 def save_config_file(config):
     token = ''
@@ -663,6 +752,195 @@ def install_config(config):
 
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
+
+def session_check(request):
+    session_data = {}
+    session_data['ip'] = {'name': request.remote_addr}
+    session_data['session'] = {'name': request.cookies.get('session_name')}
+    session_data['token'] = {}
+    session_data['user'] = {}
+
+    if session_data['session']['name'] is None :
+        session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
+
+    results = config['driver'].execute_query(
+        query_session_check,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name']
+    )
+
+    for result in results.records:
+        data = result.data()
+        session_data['ip']['status'] = data['ip_status']
+        session_data['session']['state'] = data['session_state']
+        session_data['session']['challenge'] = data['session_challenge']
+        session_data['session']['user_verification'] = data['session_user_verification']
+        session_data['user']['id'] = bytes("%s" % (data['user_id']), 'utf8')
+        session_data['user']['name'] = data['user_name']
+        session_data['user']['display'] = data['user_display_name']
+        session_data['token']['challenge'] = data['token_challenge']
+        session_data['token']['state'] = data['token_state']
+        session_data['token']['user_verification'] = data['token_user_verification']
+        session_data['token']['authenticator_attachment'] = data['token_authenticator_attachment']
+        session_data['token']['credential_data'] = data['token_credential_data']
+
+    return session_data
+
+@app.route("/api/login", methods = ['GET'])
+def route_login():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+    resp = make_response()
+    resp.set_cookie('session_name', session_data['session']['name'])
+    return resp
+
+@app.route("/api/session_data", methods=["GET"])
+def route_session_data():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    session_data = session_check(request)
+    session_data['user']['id'] = '... removed ...'
+    return jsonify(session_data)
+
+@app.route("/api/register/begin", methods=["POST"])
+def route_register_begin():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    if session_data['session']['state'] != 'valid':
+        resp = make_response(redirect('/api/login'))
+        resp.set_cookie('session_name', session_data['session']['name'])
+        return resp
+
+    options, state = server.register_begin(
+        PublicKeyCredentialUserEntity(
+            id= session_data['user']['id'],
+            name= session_data['user']['name'],
+            display_name= session_data['user']['display'],
+        ),
+        credentials,
+        user_verification= session_data['token']['user_verification'],
+        authenticator_attachment= session_data['token']['authenticator_attachment'],
+    )
+
+    session_data['token']['challenge'] = state['challenge']
+    session_data['token']['user_verification'] = state['user_verification']
+
+    results = config['driver'].execute_query(
+        query_token_register,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+        challenge= session_data['token']['challenge'],
+        user_verification= session_data['token']['user_verification']
+    )
+
+    for result in results.records:
+        data = result.data()
+        pass
+
+    return jsonify(dict(options))
+
+@app.route("/api/register/complete", methods=["POST"])
+def route_register_complete():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    if session_data['session']['state'] != 'valid':
+        resp = make_response(redirect('/api/login'))
+        resp.set_cookie('session_name', session_data['session']['name'])
+        return resp
+
+    response = request.json
+    state = {
+        'challenge': session_data['token']['challenge'],
+        'user_verification': session_data['token']['user_verification']
+    }
+
+    auth_data = server.register_complete(state, response)
+
+    b64_auth_data = base64.b64encode(auth_data.credential_data)
+
+    results = config['driver'].execute_query(
+        query_token_register_complete,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+        credential_data= b64_auth_data.decode('utf8')
+    )
+
+    for result in results.records:
+        data = result.data()
+        pass
+
+    return jsonify({"status": "OK"})
+
+
+@app.route("/api/authenticate/begin", methods=["POST"])
+def route_authenticate_begin():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    cred_bytes = base64.b64decode(session_data['token']['credential_data'].encode('utf8'))
+    cred_data = AttestedCredentialData.unpack_from(cred_bytes)[0]
+
+    options, state = server.authenticate_begin([cred_data])
+
+    results = config['driver'].execute_query(
+        query_token_auth,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+    )
+
+    for result in results.records:
+        data = result.data()
+        pass
+
+    return jsonify(dict(options))
+
+@app.route("/api/authenticate/complete", methods=["POST"])
+def route_authenticate_complete():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    cred_bytes = base64.b64decode(session_data['token']['credential_data'].encode('utf8'))
+    cred_data = AttestedCredentialData.unpack_from(cred_bytes)[0]
+
+    response = request.json
+    state = {
+        'challenge': session_data['session']['challenge'],
+        'user_verification': session_data['session']['user_verification']
+    }
+
+    server.authenticate_complete(
+        state,
+        [cred_data],
+        response,
+    )
+
+    results = config['driver'].execute_query(
+        query_token_auth_complete,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+    )
+
+    return jsonify({"status": "OK"})
+
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
