@@ -40,10 +40,11 @@ app = Flask(__name__, static_url_path="/static/", static_folder="/app/static/")
 app.secret_key = os.urandom(32)  # Used for session.
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['FIDO2_SERVER'] = None
+app.config['INSTANCE_NUMBER'] = os.urandom(32).hex()
+app.config['INSTANCE_CONFIG'] = None
+app.config['NEO4J_DRIVER'] = None
 
 #fido2.features.webauthn_json_mapping.enabled = True #TO_REMOVE
-
-instance_number = os.urandom(32).hex()
 
 query_full_backup_first_file = """
 MATCH (n:file)-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name}) 
@@ -385,7 +386,7 @@ def open_config_file(key=b""):
             }
         }
 
-def derive(password): #b"my great password"
+def derive(config, password): #b"my great password"
     kdf = Argon2id(
         salt=config['salt'],
         length=32,
@@ -397,7 +398,7 @@ def derive(password): #b"my great password"
     )
     return kdf.derive(password) #key
 
-def verify(password, key): #b"my great password"
+def verify(config, password, key): #b"my great password"
     kdf = Argon2id(
         salt=config['salt'],
         length=32,
@@ -434,11 +435,11 @@ def digest(uuid, digest_name):
 def neo4j_connection(config):
     app.logger.info("set config file : %s", config['neo4j']['instance'])
     uri = f"{config['neo4j']['scheme']}://{config['neo4j']['instance']}:{config['neo4j']['port']}"
-    config['driver'] = GraphDatabase.driver(uri, auth=(config['neo4j']['login'], config['neo4j']['password']))
-    results = config['driver'].execute_query(
+    app.config['NEO4J_DRIVER'] = GraphDatabase.driver(uri, auth=(config['neo4j']['login'], config['neo4j']['password']))
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_startup,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number
+        instance_number= app.config['INSTANCE_NUMBER']
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
@@ -455,10 +456,10 @@ def upload_file(request):
     data['sha256'] = digest(data['uuid'], "sha256")
     app.logger.info("summary : %s", archive_cmd)
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_put_file,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         file= filename,
         file_uuid= file_uuid,
         sha256=data['sha256']
@@ -467,11 +468,11 @@ def upload_file(request):
 
     return data
 
-def neo4_get_file(config, file_uuid):
-    results = config['driver'].execute_query(
+def neo4j_get_file(config, file_uuid):
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_get_file,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         file_uuid= file_uuid
     )
 
@@ -483,13 +484,13 @@ def neo4_get_file(config, file_uuid):
     return data['file']
 
 def logging(request):
-    if (('driver' not in config) or (('driver' in config) and (config['driver'] == None))) :
+    if (('NEO4J_DRIVER' not in config) or (('NEO4J_DRIVER' in config) and (app.config['NEO4J_DRIVER'] == None))) :
         return True
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_logs,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         ip= request.remote_addr,
         data= ", ".join(request.values)
     )
@@ -508,7 +509,7 @@ def install_config(config):
     if (len(query) == 0):
         return False
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query
     ).summary
 
@@ -530,10 +531,10 @@ def session_check(request):
     if session_data['session']['name'] is None :
         session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_session_check,
         dns= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
         upload_token= session_data['upload_token']['token_name']
@@ -598,10 +599,10 @@ def route_file_post_type(uuid):
 
     if ((len(request.values) != 0) and ('file_type' in request.values) and (request.values['file_type'] != "")
         and ('token' in request.values) and (request.values['token'] == config['token'])):
-        results = config['driver'].execute_query(
+        results = app.config['NEO4J_DRIVER'].execute_query(
             query_post_file_type,
             name= os.environ['INSTANCE_DNS'],
-            instance_number= instance_number,
+            instance_number= app.config['INSTANCE_NUMBER'],
             file_uuid= uuid,
             file_type= request.values['file_type']
         ).summary
@@ -619,10 +620,10 @@ def route_file_post_location(uuid):
 
     if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")
         and ('token' in request.values) and (request.values['token'] == config['token'])):
-        results = config['driver'].execute_query(
+        results = app.config['NEO4J_DRIVER'].execute_query(
             query_post_file_location,
             name= os.environ['INSTANCE_DNS'],
-            instance_number= instance_number,
+            instance_number= app.config['INSTANCE_NUMBER'],
             file_uuid= uuid,
             location= request.values['location']
         ).summary
@@ -637,10 +638,10 @@ def route_file_post_location(uuid):
 @app.route('/<uuid>/type', methods = ['GET'])
 def route_file_get_type(uuid):
     data = {'uuid': uuid}
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_get_file_type,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         file_uuid= uuid
     )
 
@@ -658,10 +659,10 @@ def route_file_get_type(uuid):
 def route_file_get_full_backup_first_file():
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        results = config['driver'].execute_query(
+        results = app.config['NEO4J_DRIVER'].execute_query(
             query_full_backup_first_file,
             name= os.environ['INSTANCE_DNS'],
-            instance_number= instance_number
+            instance_number= app.config['INSTANCE_NUMBER']
         )
 
         for result in results.records:
@@ -679,10 +680,10 @@ def route_file_get_next_backup(uuid):
     data = {'uuid': uuid}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
 
-        results = config['driver'].execute_query(
+        results = app.config['NEO4J_DRIVER'].execute_query(
             query_next_backup,
             name= os.environ['INSTANCE_DNS'],
-            instance_number= instance_number,
+            instance_number= app.config['INSTANCE_NUMBER'],
             file_uuid= uuid
         )
 
@@ -702,10 +703,10 @@ def route_file_post_infos(uuid):
 
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
         if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")):
-            results = config['driver'].execute_query(
+            results = app.config['NEO4J_DRIVER'].execute_query(
                 query_post_file_infos,
                 name= os.environ['INSTANCE_DNS'],
-                instance_number= instance_number,
+                instance_number= app.config['INSTANCE_NUMBER'],
                 file_uuid= uuid,
                 owner= request.values['owner'],
                 mode= request.values['mode'],
@@ -720,10 +721,10 @@ def route_file_post_infos(uuid):
             app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
 
         else :
-            results = config['driver'].execute_query(
+            results = app.config['NEO4J_DRIVER'].execute_query(
                 query_get_file_infos,
                 name= os.environ['INSTANCE_DNS'],
-                instance_number= instance_number,
+                instance_number= app.config['INSTANCE_NUMBER'],
                 file_uuid= uuid
             )
 
@@ -756,7 +757,7 @@ def route_execute_query(uuid):
 
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        file_name = neo4_get_file(config, str(__uuid))
+        file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(__uuid))
 
         query = ""
         with open(app.config["UPLOAD_FOLDER"] + '/' + str(__uuid), 'rt') as f :
@@ -766,7 +767,7 @@ def route_execute_query(uuid):
             data['error'] == 'not found'
             return jsonify(data)
 
-        data['records'], summary, data['keys'] = config['driver'].execute_query(
+        data['records'], summary, data['keys'] = app.config['NEO4J_DRIVER'].execute_query(
             query
         )
 
@@ -792,7 +793,7 @@ def route_download_file(uuid):
     except ValueError:
         abort(404)
 
-    file_name = neo4_get_file(config, str(__uuid))
+    file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(__uuid))
     return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
 
 @app.route('/<hook_name>/hooks', methods=['GET', 'POST'])
@@ -805,10 +806,10 @@ def route_hooks(hook_name):
     #for value in request.values:
     #    data[value] = request.values[value]
     app.logger.info("hook : %s - %s", hook_name, ", ".join(request.values))
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_hooks,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         hook_name= hook_name,
         ip= request.remote_addr,
         #data= ", ".join(request.values)
@@ -846,10 +847,10 @@ def route_register_begin():
     session_data['token']['challenge'] = state['challenge']
     session_data['token']['user_verification'] = state['user_verification']
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_token_register,
         dns= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
         challenge= session_data['token']['challenge'],
@@ -880,10 +881,10 @@ def route_register_complete():
 
     b64_auth_data = base64.b64encode(auth_data.credential_data)
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_token_register_complete,
         dns= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
         credential_data= b64_auth_data.decode('utf8')
@@ -909,10 +910,10 @@ def route_authenticate_begin():
     session_data['session']['challenge'] = state['challenge']
     session_data['session']['user_verification'] = state['user_verification']
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_token_auth,
         dns= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
         challenge= session_data['session']['challenge'],
@@ -948,10 +949,10 @@ def route_authenticate_complete():
         response,
     )
 
-    results = config['driver'].execute_query(
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_token_auth_complete,
         dns= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
+        instance_number= app.config['INSTANCE_NUMBER'],
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
     )
@@ -969,22 +970,22 @@ def route_upload_token():
 
     config_data = {
         'dns': os.environ['INSTANCE_DNS'],
-        'instance_number': instance_number,
+        'instance_number': app.config['INSTANCE_NUMBER'],
         'ip': session_data['ip']['name'],
         'session_name': session_data['session']['name'],
         'upload_token': gen_rand(64)
     }
 
-    results = config['driver'].execute_query(query_upload_token, parameters_= config_data)
+    results = app.config['NEO4J_DRIVER'].execute_query(query_upload_token, parameters_= config_data)
 
     return jsonify({"status": "OK"})
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
-    if not(logging(request)):
-        abort(404)
+    #if not(logging(request)):
+    #    abort(404)
 
-    if is_ready(config) : #is_ready
+    if is_ready(app.config['INSTANCE_CONFIG']) : #is_ready
         session_data = session_check(request)
 
         if ( (session_data['upload_token']['state'] == "ok")
@@ -1001,7 +1002,7 @@ def route_upload_file_get():
             #if ('token' not in request.values):
             #    return render_template('simple_uploader.html', title='Upload file - missing token')
 
-            #elif (('token' in request.values) and (request.values['token'] != config['token'])):
+            #elif (('token' in request.values) and (request.values['token'] != app.config['INSTANCE_CONFIG']['token'])):
             #    return render_template('simple_uploader.html', title='Upload file - wrong token')
 
             if ('file' not in request.files):
@@ -1013,15 +1014,15 @@ def route_upload_file_get():
         else :
             return render_template('simple_uploader.html', title='Upload file')
 
-    elif is_wait_for_neo4j_credential(config): #is_wait_for_neo4j_credential
+    elif is_wait_for_neo4j_credential(app.config['INSTANCE_CONFIG']): #is_wait_for_neo4j_credential
         if verify_post_neo4j_credential(request): #verify_post_neo4j_credential
-            config['neo4j']['instance'] = request.values['instance']
-            config['neo4j']['login'] = request.values['login']
-            config['neo4j']['password'] = request.values['password']
-            save_config_file(config)
+            app.config['INSTANCE_CONFIG']['neo4j']['instance'] = request.values['instance']
+            app.config['INSTANCE_CONFIG']['neo4j']['login'] = request.values['login']
+            app.config['INSTANCE_CONFIG']['neo4j']['password'] = request.values['password']
+            save_config_file(app.config['INSTANCE_CONFIG'])
 
-            if neo4j_connection(config):
-                if install_config(config):
+            if neo4j_connection(app.config['INSTANCE_CONFIG']):
+                if install_config(app.config['INSTANCE_CONFIG']):
                     return render_template('simple_uploader.html', title='Upload file - database connected')
                 else :
                     return render_template('simple_uploader.html', title='Upload file - database configuration failed')
@@ -1034,17 +1035,17 @@ def route_upload_file_get():
         else :
             return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
 
-    elif is_wait_for_password(config): #is_wait_for_password
+    elif is_wait_for_password(app.config['INSTANCE_CONFIG']): #is_wait_for_password
         if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
-            config['key'] = derive(bytes(request.values['password'], 'utf-8'))
+            app.config['INSTANCE_CONFIG']['key'] = derive(app.config['INSTANCE_CONFIG'], bytes(request.values['password'], 'utf-8'))
 
-            if (config['neo4j']['instance'] != ''): #conf.json file already exists at boot
-                tempo = open_config_file(config['key'])
-                config['token'] = tempo['token']
-                config['neo4j']['password'] = tempo['neo4j']['password']
+            if (app.config['INSTANCE_CONFIG']['neo4j']['instance'] != ''): #conf.json file already exists at boot
+                tempo = open_config_file(app.config['INSTANCE_CONFIG']['key'])
+                app.config['INSTANCE_CONFIG']['token'] = tempo['token']
+                app.config['INSTANCE_CONFIG']['neo4j']['password'] = tempo['neo4j']['password']
 
-                if neo4j_connection(config):
-                    if install_config(config):
+                if neo4j_connection(app.config['INSTANCE_CONFIG']):
+                    if install_config(app.config['INSTANCE_CONFIG']):
                         return render_template('simple_uploader.html', title='Upload file - database connected')
                     else :
                         return render_template('simple_uploader.html', title='Upload file - database configuration failed')
@@ -1064,26 +1065,26 @@ def route_upload_file_get():
     else : #strange case
         return render_template('ask_password.html', title='Ask password - should not happen')
 
-#argon2 et aes config
-if not(os.path.exists('/config/config.json')):
-    save_config_file({
-        'salt' : os.urandom(16), #8*16=128
-        'iv' : os.urandom(16), #8*16=128
-        'token' : '', #os.urandom(32).hex() #8*32=256
-        'neo4j': {
-            'instance': '',
-            'login': '',
-            'password': '',
-            'scheme': 'neo4j+s',
-            'port': '7687'
-        }
-    })
-
-config = open_config_file()
-config['driver'] = None
-
 #this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":
+
+    #argon2 et aes config
+    if not(os.path.exists('/config/config.json')):
+        save_config_file({
+            'salt' : os.urandom(16), #8*16=128
+            'iv' : os.urandom(16), #8*16=128
+            'token' : '', #os.urandom(32).hex() #8*32=256
+            'neo4j': {
+                'instance': '',
+                'login': '',
+                'password': '',
+                'scheme': 'neo4j+s',
+                'port': '7687'
+            }
+        })
+
+    app.config['INSTANCE_CONFIG'] = open_config_file()
+
     try :
         dns_name = os.environ['INSTANCE_DNS']
         print("dns_name : %s" % (dns_name))
@@ -1102,9 +1103,9 @@ if __name__ == "__main__":
     except FileNotFoundError:
         app.run(host='::', port='443') #debug=True
         #app.run(host='0.0.0.0', port='443') #debug=True
-        app.logger.info("!!! no certs found !!!", instance_number)
+        app.logger.info("!!! no certs found !!!", app.config['INSTANCE_NUMBER'])
     else:
         app.run(host='::', port='443', ssl_context=context) #debug=True
         #app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
     finally :
-        app.logger.info("instance name : %s", instance_number)
+        app.logger.info("instance name : %s", app.config['INSTANCE_NUMBER'])
