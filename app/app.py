@@ -39,12 +39,9 @@ UPLOAD_FOLDER = '/uploaded_files'
 app = Flask(__name__, static_url_path="/static/", static_folder="/app/static/")
 app.secret_key = os.urandom(32)  # Used for session.
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['FIDO2_SERVER'] = None
 
 #fido2.features.webauthn_json_mapping.enabled = True #TO_REMOVE
-
-###
-###rp = PublicKeyCredentialRpEntity(name="env name", id="...dns...")
-###server = Fido2Server(rp)
 
 instance_number = os.urandom(32).hex()
 
@@ -796,15 +793,6 @@ def session_check(request):
 
     return session_data
 
-@app.route("/api/login", methods = ['GET'])
-def route_login():
-    session_data = session_check(request)
-    if session_data['ip']['status'] != 'ok':
-        abort(404)
-    resp = make_response()
-    resp.set_cookie('session_name', session_data['session']['name'])
-    return resp
-
 @app.route("/api/session_data", methods=["GET"])
 def route_session_data():
     session_data = session_check(request)
@@ -826,7 +814,7 @@ def route_register_begin():
     #    resp.set_cookie('session_name', session_data['session']['name'])
     #    return resp
 
-    options, state = server.register_begin(
+    options, state = app.config['FIDO2_SERVER'].register_begin(
         PublicKeyCredentialUserEntity(
             id= session_data['user']['id'],
             name= session_data['user']['name'],
@@ -854,7 +842,9 @@ def route_register_begin():
         data = result.data()
         pass
 
-    return jsonify(dict(options))
+    resp = jsonify(dict(options))
+    resp.set_cookie('session_name', session_data['session']['name'])
+    return resp
 
 @app.route("/api/register/complete", methods=["POST"])
 def route_register_complete():
@@ -873,7 +863,7 @@ def route_register_complete():
         'user_verification': session_data['token']['user_verification']
     }
 
-    auth_data = server.register_complete(state, response)
+    auth_data = app.config['FIDO2_SERVER'].register_complete(state, response)
 
     b64_auth_data = base64.b64encode(auth_data.credential_data)
 
@@ -890,7 +880,9 @@ def route_register_complete():
         data = result.data()
         pass
 
-    return jsonify({"status": "OK"})
+    resp = jsonify({"status": "OK"})
+    resp.set_cookie('session_name', session_data['session']['name'])
+    return resp
 
 
 @app.route("/api/authenticate/begin", methods=["POST"])
@@ -902,7 +894,7 @@ def route_authenticate_begin():
     cred_bytes = base64.b64decode(session_data['token']['credential_data'].encode('utf8'))
     cred_data = AttestedCredentialData.unpack_from(cred_bytes)[0]
 
-    options, state = server.authenticate_begin([cred_data])
+    options, state = app.config['FIDO2_SERVER'].authenticate_begin([cred_data])
 
     session_data['session']['challenge'] = state['challenge']
     session_data['session']['user_verification'] = state['user_verification']
@@ -921,7 +913,9 @@ def route_authenticate_begin():
         data = result.data()
         pass
 
-    return jsonify(dict(options))
+    resp = jsonify(dict(options))
+    resp.set_cookie('session_name', session_data['session']['name'])
+    return resp
 
 @app.route("/api/authenticate/complete", methods=["POST"])
 def route_authenticate_complete():
@@ -938,7 +932,7 @@ def route_authenticate_complete():
         'user_verification': session_data['session']['user_verification']
     }
 
-    server.authenticate_complete(
+    app.config['FIDO2_SERVER'].authenticate_complete(
         state,
         [cred_data],
         response,
@@ -952,7 +946,9 @@ def route_authenticate_complete():
         session_name= session_data['session']['name'],
     )
 
-    return jsonify({"status": "OK"})
+    resp = jsonify({"status": "OK"})
+    resp.set_cookie('session_name', session_data['session']['name'])
+    return resp
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -1083,12 +1079,17 @@ if __name__ == "__main__":
         dns_name = os.environ['INSTANCE_DNS']
         print("dns_name : %s" % (dns_name))
         logs = os.system("/usr/bin/sudo /scripts/gen_certs.sh %s" % (dns_name))
+
+        rp = PublicKeyCredentialRpEntity(name="Linked : %s" % (dns_name), id=dns_name)
+        app.config['FIDO2_SERVER'] = Fido2Server(rp)
+
     finally:
         print(logs)
 
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
+
     except FileNotFoundError:
         app.run(host='::', port='443') #debug=True
         #app.run(host='0.0.0.0', port='443') #debug=True
