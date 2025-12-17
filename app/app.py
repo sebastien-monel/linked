@@ -279,10 +279,6 @@ MERGE (machine)<-[:in]-(user)
 SET f.size = $size
 """
 
-def gen_rand(length = 64):
-    chars = string.ascii_uppercase + string.ascii_lowercase + string.digits #to_review
-    return ''.join(random.choice(chars) for _ in range(length))
-
 def is_ready(config):
     return (('key' in config)
         and ('neo4j' in config)
@@ -310,6 +306,10 @@ def verify_post_neo4j_credential(request):
         and ('password' in request.values)
         and (request.values['password'] != "")
     )
+
+def gen_rand(length = 64):
+    chars = string.ascii_uppercase + string.ascii_lowercase + string.digits #to_review
+    return ''.join(random.choice(chars) for _ in range(length))
 
 def save_config_file(config):
     token = ''
@@ -430,6 +430,134 @@ def digest(uuid, digest_name):
         digest = hashlib.file_digest(f, digest_name)
         return digest.hexdigest()
     return ""
+
+def neo4j_connection(config):
+    app.logger.info("set config file : %s", config['neo4j']['instance'])
+    uri = f"{config['neo4j']['scheme']}://{config['neo4j']['instance']}:{config['neo4j']['port']}"
+    config['driver'] = GraphDatabase.driver(uri, auth=(config['neo4j']['login'], config['neo4j']['password']))
+    results = config['driver'].execute_query(
+        query_startup,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number
+    ).summary
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return True
+
+def upload_file(request):
+    file = request.files['file']
+    filename = secure_filename(file.filename)
+    data = {}
+    file_uuid = str(uuid.uuid1())
+    data['uuid'] = file_uuid
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
+    archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
+    logs = os.system(archive_cmd)
+    data['sha256'] = digest(data['uuid'], "sha256")
+    app.logger.info("summary : %s", archive_cmd)
+
+    results = config['driver'].execute_query(
+        query_put_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        file= filename,
+        file_uuid= file_uuid,
+        sha256=data['sha256']
+    ).summary
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+
+    return data
+
+def neo4_get_file(config, file_uuid):
+    results = config['driver'].execute_query(
+        query_get_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        file_uuid= file_uuid
+    )
+
+    for result in results.records:
+        data = result.data()
+        break #TO_REVIEW
+
+    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return data['file']
+
+def logging(request):
+    if (('driver' not in config) or (('driver' in config) and (config['driver'] == None))) :
+        return True
+
+    results = config['driver'].execute_query(
+        query_logs,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= request.remote_addr,
+        data= ", ".join(request.values)
+    )
+
+    for result in results.records:
+        data = result.data()
+        if (('status' in data) and (data['status'] == 'banned')) :
+            return False
+    return True
+
+def install_config(config):
+    query = ""
+    with open("/app/cypher/file_types.cypher", 'rt') as f :
+        query = f.read()
+
+    if (len(query) == 0):
+        return False
+
+    results = config['driver'].execute_query(
+        query
+    ).summary
+
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return True
+
+def session_check(request):
+    upload_token = None
+    if ((len(request.values) > 0) and ('token' in request.values) and (request.values['token'])):
+        upload_token = request.values['token']
+
+    session_data = {}
+    session_data['ip'] = {'name': request.remote_addr}
+    session_data['session'] = {'name': request.cookies.get('session_name')}
+    session_data['token'] = {}
+    session_data['user'] = {}
+    session_data['upload_token'] = {'token_name': upload_token}
+
+    if session_data['session']['name'] is None :
+        session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
+
+    results = config['driver'].execute_query(
+        query_session_check,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+        upload_token= session_data['upload_token']['token_name']
+    )
+
+    for result in results.records:
+        data = result.data()
+        session_data['ip']['status'] = data['ip_status']
+        session_data['session']['state'] = data['session_state']
+        session_data['session']['challenge'] = data['session_challenge']
+        session_data['session']['user_verification'] = data['session_user_verification']
+        session_data['user']['id'] = bytes("%s" % (data['user_id']), 'utf8')
+        session_data['user']['name'] = data['user_name']
+        session_data['user']['display'] = data['user_display_name']
+        session_data['token']['challenge'] = data['token_challenge']
+        session_data['token']['state'] = data['token_state']
+        session_data['token']['user_verification'] = data['token_user_verification']
+        session_data['token']['authenticator_attachment'] = data['token_authenticator_attachment']
+        session_data['token']['credential_data'] = data['token_credential_data']
+        session_data['upload_token']['dest'] = data['dest_ut']
+        session_data['upload_token']['source'] = data['source_ut']
+        session_data['upload_token']['state'] = data['ut_state']
+
+    return session_data
 
 @app.route('/<uuid1>/<uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):
@@ -667,33 +795,6 @@ def route_download_file(uuid):
     file_name = neo4_get_file(config, str(__uuid))
     return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
 
-def neo4_get_file(config, file_uuid):
-    results = config['driver'].execute_query(
-        query_get_file,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
-        file_uuid= file_uuid
-    )
-
-    for result in results.records:
-        data = result.data()
-        break #TO_REVIEW
-
-    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    return data['file']
-
-def neo4j_connection(config):
-    app.logger.info("set config file : %s", config['neo4j']['instance'])
-    uri = f"{config['neo4j']['scheme']}://{config['neo4j']['instance']}:{config['neo4j']['port']}"
-    config['driver'] = GraphDatabase.driver(uri, auth=(config['neo4j']['login'], config['neo4j']['password']))
-    results = config['driver'].execute_query(
-        query_startup,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number
-    ).summary
-    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    return True
-
 @app.route('/<hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
     data = {'hook_name': hook_name}
@@ -714,83 +815,6 @@ def route_hooks(hook_name):
         data=received_data
     ).summary
     return jsonify(data)
-
-def logging(request):
-    if (('driver' not in config) or (('driver' in config) and (config['driver'] == None))) :
-        return True
-
-    results = config['driver'].execute_query(
-        query_logs,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
-        ip= request.remote_addr,
-        data= ", ".join(request.values)
-    )
-
-    for result in results.records:
-        data = result.data()
-        if (('status' in data) and (data['status'] == 'banned')) :
-            return False
-    return True
-
-def install_config(config):
-    query = ""
-    with open("/app/cypher/file_types.cypher", 'rt') as f :
-        query = f.read()
-
-    if (len(query) == 0):
-        return False
-
-    results = config['driver'].execute_query(
-        query
-    ).summary
-
-    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    return True
-
-def session_check(request):
-    upload_token = None
-    if ((len(request.values) > 0) and ('token' in request.values) and (request.values['token'])):
-        upload_token = request.values['token']
-
-    session_data = {}
-    session_data['ip'] = {'name': request.remote_addr}
-    session_data['session'] = {'name': request.cookies.get('session_name')}
-    session_data['token'] = {}
-    session_data['user'] = {}
-    session_data['upload_token'] = {'token_name': upload_token}
-
-    if session_data['session']['name'] is None :
-        session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
-
-    results = config['driver'].execute_query(
-        query_session_check,
-        dns= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
-        ip= session_data['ip']['name'],
-        session_name= session_data['session']['name'],
-        upload_token= session_data['upload_token']['token_name']
-    )
-
-    for result in results.records:
-        data = result.data()
-        session_data['ip']['status'] = data['ip_status']
-        session_data['session']['state'] = data['session_state']
-        session_data['session']['challenge'] = data['session_challenge']
-        session_data['session']['user_verification'] = data['session_user_verification']
-        session_data['user']['id'] = bytes("%s" % (data['user_id']), 'utf8')
-        session_data['user']['name'] = data['user_name']
-        session_data['user']['display'] = data['user_display_name']
-        session_data['token']['challenge'] = data['token_challenge']
-        session_data['token']['state'] = data['token_state']
-        session_data['token']['user_verification'] = data['token_user_verification']
-        session_data['token']['authenticator_attachment'] = data['token_authenticator_attachment']
-        session_data['token']['credential_data'] = data['token_credential_data']
-        session_data['upload_token']['dest'] = data['dest_ut']
-        session_data['upload_token']['source'] = data['source_ut']
-        session_data['upload_token']['state'] = data['ut_state']
-
-    return session_data
 
 @app.route("/api/session_data", methods=["GET", "POST"])
 def route_session_data():
@@ -954,30 +978,6 @@ def route_upload_token():
     results = config['driver'].execute_query(query_upload_token, parameters_= config_data)
 
     return jsonify({"status": "OK"})
-
-def upload_file(request):
-    file = request.files['file']
-    filename = secure_filename(file.filename)
-    data = {}
-    file_uuid = str(uuid.uuid1())
-    data['uuid'] = file_uuid
-    file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
-    archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
-    logs = os.system(archive_cmd)
-    data['sha256'] = digest(data['uuid'], "sha256")
-    app.logger.info("summary : %s", archive_cmd)
-
-    results = config['driver'].execute_query(
-        query_put_file,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
-        file= filename,
-        file_uuid= file_uuid,
-        sha256=data['sha256']
-    ).summary
-    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-
-    return data
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
