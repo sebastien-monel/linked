@@ -112,8 +112,8 @@ LIMIT 2
 
 query_get_file_infos = """
 MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
-MATCH (su:system_user)<-[:owner]-(f)-[:mode]->(m:mode)
-MATCH (proj:location)<-[:from]-(f)-[:in]->(loc:location)
+MATCH (su:system_user)<-[:owner]-(f)-[:mode]->(m:mode) 
+MATCH (proj:location)<-[:from]-(f)-[:in]->(loc:location) 
 RETURN f.file as file_name, 
     ft.name as file_type, 
     ft.ext as type_ext, 
@@ -162,6 +162,15 @@ CREATE (li)<-[:log]-(log)
 RETURN ip.status as status
 """
 
+query_upload_token = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+MATCH (ck:cookie {session_name: $session_name}) 
+MERGE (t:upload_token {token: $upload_token}) 
+ON CREATE SET t.creation_date= datetime(), t.state = 'ok' 
+MERGE (li)<-[:for]-(t) 
+MERGE (ck)<-[:from]-(t) 
+"""
+
 query_token_register = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
 MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip:ip {name: $ip}) 
@@ -170,7 +179,7 @@ MERGE (t:token)
 SET 
     ck.last_date= datetime(), 
     t.creation_date= datetime(), 
-    t.state= 'challenge',
+    t.state= 'challenge', 
     t.challenge = $challenge, 
     t.user_verification = $user_verification
 """
@@ -194,7 +203,7 @@ MATCH (p:personne)
 MATCH (t:token) 
 SET 
     ck.last_date= datetime(), 
-    ck.auth_challenge_date= datetime(),
+    ck.auth_challenge_date= datetime(), 
     ck.session_state= 'challenge', 
     ck.challenge = $challenge, 
     ck.user_verification = $user_verification
@@ -207,7 +216,7 @@ MATCH (p:personne)
 MATCH (t:token) 
 SET 
     ck.last_date= datetime(), 
-    ck.auth_complete= datetime(),
+    ck.auth_complete= datetime(), 
     ck.session_state= 'valid'
 """
 
@@ -225,6 +234,8 @@ ON CREATE SET
 ON MATCH SET ck.last_date= datetime() 
 MERGE (li)<-[:to]-(ck) 
 MERGE (ck)-[:from]->(ip) 
+WITH ip, ck, t, p, dns 
+OPTIONAL MATCH (ip)<-[:for]-(ut:upload_token {token: $upload_token})-[:for]->(li_ut:linked_instance)-[:in]->(dns) 
 RETURN 
     ip.status as ip_status, 
     ck.session_state as session_state, 
@@ -238,7 +249,10 @@ RETURN
     coalesce(t.authenticator_attachment, 'cross-platform') as token_authenticator_attachment, 
     p.user_id as user_id, 
     p.mail as user_name, 
-    p.prenom as user_display_name
+    p.prenom as user_display_name, 
+    dns.dns as dest_ut, 
+    ip.name as source_ut, 
+    coalesce(ut.state, "no_token") as ut_state
 """
 
 query_post_file_infos = """
@@ -268,6 +282,34 @@ SET f.size = $size
 def gen_rand(length = 64):
     chars = string.ascii_uppercase + string.ascii_lowercase + string.digits #to_review
     return ''.join(random.choice(chars) for _ in range(length))
+
+def is_ready(config):
+    return (('key' in config)
+        and ('neo4j' in config)
+        and ('instance' in config['neo4j'])
+        and (config['neo4j']['instance'] != '')
+    )
+
+def is_wait_for_neo4j_credential(config):
+    return (('neo4j' in config)
+        and ('key' in config)
+        and ('instance' in config['neo4j'])
+        and (config['neo4j']['instance'] == '')
+    )
+
+def is_wait_for_password(config):
+    return ( ('key' not in config) )
+
+def verify_post_neo4j_credential(request):
+    return (
+        (len(request.values) != 0)
+        and ('instance' in request.values)
+        and (request.values['instance'] != "")
+        and ('login' in request.values)
+        and (request.values['login'] != "")
+        and ('password' in request.values)
+        and (request.values['password'] != "")
+    )
 
 def save_config_file(config):
     token = ''
@@ -625,58 +667,6 @@ def route_download_file(uuid):
     file_name = neo4_get_file(config, str(__uuid))
     return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
 
-def is_ready(config):
-    return (('key' in config)
-        and ('neo4j' in config)
-        and ('token' in config) and (config['token'] != "")
-        and ('instance' in config['neo4j']) and (config['neo4j']['instance'] != '')
-    )
-
-def is_wait_for_neo4j_credential(config):
-    return (('neo4j' in config)
-        and ('key' in config)
-        and ('token' in config) and (config['token'] != "")
-        and ('instance' in config['neo4j']) and (config['neo4j']['instance'] == '')
-    )
-
-def is_wait_for_token(config):
-    return (('key' in config)
-        and ('token' in config)
-        and (config['token'] == "")
-    )
-
-def is_wait_for_password(config):
-    return ( ('key' not in config) )
-
-def verify_post_neo4j_credential(request):
-    return (
-        (len(request.values) != 0)
-        and ('instance' in request.values)
-        and (request.values['instance'] != "")
-        and ('login' in request.values)
-        and (request.values['login'] != "")
-        and ('password' in request.values)
-        and (request.values['password'] != "")
-    )
-
-def verify_post_file(request):
-    return ((len(request.files) != 0) and ('file' in request.files)
-        and (len(request.values) != 0)
-        and ('token' in request.values)
-    )
-
-def neo4_log_file(config, file, file_uuid, sha256):
-    results = config['driver'].execute_query(
-        query_put_file,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= instance_number,
-        file= file,
-        file_uuid= file_uuid,
-        sha256=sha256
-    ).summary
-    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    return True
-
 def neo4_get_file(config, file_uuid):
     results = config['driver'].execute_query(
         query_get_file,
@@ -759,11 +749,16 @@ def install_config(config):
     return True
 
 def session_check(request):
+    upload_token = None
+    if ((len(request.values) > 0) and ('token' in request.values) and (request.values['token'])):
+        upload_token = request.values['token']
+
     session_data = {}
     session_data['ip'] = {'name': request.remote_addr}
     session_data['session'] = {'name': request.cookies.get('session_name')}
     session_data['token'] = {}
     session_data['user'] = {}
+    session_data['upload_token'] = {'token_name': upload_token}
 
     if session_data['session']['name'] is None :
         session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
@@ -773,7 +768,8 @@ def session_check(request):
         dns= os.environ['INSTANCE_DNS'],
         instance_number= instance_number,
         ip= session_data['ip']['name'],
-        session_name= session_data['session']['name']
+        session_name= session_data['session']['name'],
+        upload_token= session_data['upload_token']['token_name']
     )
 
     for result in results.records:
@@ -790,10 +786,13 @@ def session_check(request):
         session_data['token']['user_verification'] = data['token_user_verification']
         session_data['token']['authenticator_attachment'] = data['token_authenticator_attachment']
         session_data['token']['credential_data'] = data['token_credential_data']
+        session_data['upload_token']['dest'] = data['dest_ut']
+        session_data['upload_token']['source'] = data['source_ut']
+        session_data['upload_token']['state'] = data['ut_state']
 
     return session_data
 
-@app.route("/api/session_data", methods=["GET"])
+@app.route("/api/session_data", methods=["GET", "POST"])
 def route_session_data():
     session_data = session_check(request)
     if session_data['ip']['status'] != 'ok':
@@ -808,11 +807,6 @@ def route_register_begin():
     session_data = session_check(request)
     if session_data['ip']['status'] != 'ok':
         abort(404)
-
-    #if session_data['session']['state'] != 'valid':
-    #    resp = make_response(redirect('/api/login'))
-    #    resp.set_cookie('session_name', session_data['session']['name'])
-    #    return resp
 
     options, state = app.config['FIDO2_SERVER'].register_begin(
         PublicKeyCredentialUserEntity(
@@ -852,11 +846,6 @@ def route_register_complete():
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
-    #if session_data['session']['state'] != 'valid':
-    #    resp = make_response(redirect('/api/login'))
-    #    resp.set_cookie('session_name', session_data['session']['name'])
-    #    return resp
-
     response = request.json
     state = {
         'challenge': session_data['token']['challenge'],
@@ -880,10 +869,7 @@ def route_register_complete():
         data = result.data()
         pass
 
-    resp = jsonify({"status": "OK"})
-    resp.set_cookie('session_name', session_data['session']['name'])
-    return resp
-
+    return jsonify({"status": "OK"})
 
 @app.route("/api/authenticate/begin", methods=["POST"])
 def route_authenticate_begin():
@@ -946,10 +932,52 @@ def route_authenticate_complete():
         session_name= session_data['session']['name'],
     )
 
-    resp = jsonify({"status": "OK"})
-    resp.set_cookie('session_name', session_data['session']['name'])
-    return resp
+    return jsonify({"status": "OK"})
 
+@app.route("/api/upload_token", methods=["GET", "POST"])
+def route_upload_token():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    if session_data['session']['state'] != 'valid':
+        abort(401)
+
+    config_data = {
+        'dns': os.environ['INSTANCE_DNS'],
+        'instance_number': instance_number,
+        'ip': session_data['ip']['name'],
+        'session_name': session_data['session']['name'],
+        'upload_token': gen_rand(64)
+    }
+
+    results = config['driver'].execute_query(query_upload_token, parameters_= config_data)
+
+    return jsonify({"status": "OK"})
+
+def upload_file(request):
+    file = request.files['file']
+    filename = secure_filename(file.filename)
+    data = {}
+    file_uuid = str(uuid.uuid1())
+    data['uuid'] = file_uuid
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
+    archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
+    logs = os.system(archive_cmd)
+    data['sha256'] = digest(data['uuid'], "sha256")
+    app.logger.info("summary : %s", archive_cmd)
+
+    results = config['driver'].execute_query(
+        query_put_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= instance_number,
+        file= filename,
+        file_uuid= file_uuid,
+        sha256=data['sha256']
+    ).summary
+    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+
+    return data
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
@@ -957,33 +985,26 @@ def route_upload_file_get():
         abort(404)
 
     if is_ready(config) : #is_ready
-        if ( verify_post_file(request) and (request.values['token'] == config['token'] ) ): #verify_post_file
-            file = request.files['file']
-            filename = secure_filename(file.filename)
+        session_data = session_check(request)
+
+        if ( (session_data['upload_token']['state'] == "ok")
+            and (len(request.files) != 0) and ('file' in request.files) ):
+
             try :
-                data = {}
-                file_uuid = str(uuid.uuid1())
-                data['uuid'] = file_uuid
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
-                archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
-                logs = os.system(archive_cmd)
-                data['sha256'] = digest(data['uuid'], "sha256")
-                app.logger.info("summary : %s", archive_cmd)
-                neo4_log_file(config, filename, file_uuid, data['sha256'])
-                #return render_template('simple_uploader.html', title='Upload file')
+                data = upload_file(request)
                 return jsonify(data)
 
             except PermissionError:
                 return render_template('simple_uploader.html', title='Upload file - permission error')
 
         elif (request.method == 'POST'):
-            if ('token' not in request.values):
-                return render_template('simple_uploader.html', title='Upload file - missing token')
+            #if ('token' not in request.values):
+            #    return render_template('simple_uploader.html', title='Upload file - missing token')
 
-            elif (('token' in request.values) and (request.values['token'] != config['token'])):
-                return render_template('simple_uploader.html', title='Upload file - wrong token')
+            #elif (('token' in request.values) and (request.values['token'] != config['token'])):
+            #    return render_template('simple_uploader.html', title='Upload file - wrong token')
 
-            elif ('file' not in request.files):
+            if ('file' not in request.files):
                 return render_template('simple_uploader.html', title='Upload file - missing file')
 
             else :
@@ -1013,18 +1034,6 @@ def route_upload_file_get():
         else :
             return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
 
-    elif is_wait_for_token(config) : #is_wait_for_token
-        if ( (len(request.values) != 0) and ('token' in request.values) and (request.values['token'] != "") ):
-            config['token'] = request.values['token']
-            save_config_file(config)
-            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
-
-        elif (request.method == 'POST'):
-            return render_template('ask_token.html', title='Ask token - empty token')
-
-        else:
-            return render_template('ask_token.html', title='Ask token')
-
     elif is_wait_for_password(config): #is_wait_for_password
         if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
             config['key'] = derive(bytes(request.values['password'], 'utf-8'))
@@ -1044,7 +1053,7 @@ def route_upload_file_get():
                     return render_template('simple_uploader.html', title='Upload file - connection failed')
 
             else :
-                return render_template('ask_token.html', title='Ask token')
+                return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
 
         elif (request.method == 'POST'):
             return render_template('ask_password.html', title='Ask password - empty password not allowed')
