@@ -25,6 +25,7 @@ import uuid
 from uuid import UUID
 import hashlib
 import base64
+import logging
 
 import string
 import random
@@ -43,6 +44,7 @@ app.config['FIDO2_SERVER'] = None
 app.config['INSTANCE_NUMBER'] = os.urandom(32).hex()
 app.config['INSTANCE_CONFIG'] = None
 app.config['NEO4J_DRIVER'] = None
+app.logger.setLevel(logging.INFO)
 
 #fido2.features.webauthn_json_mapping.enabled = True #TO_REMOVE
 
