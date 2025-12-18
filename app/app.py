@@ -154,17 +154,6 @@ CREATE (ip)<-[:from]-(log:log {creation_date: datetime(), data: $data})-[:is]->(
 CREATE (li)<-[:log]-(log)-[:from]->(hook)
 """
 
-query_logs = """
-MATCH (li:linked_instance {instance_number: $instance_number}) 
-MERGE (lt:log_type {name: "logs"}) 
-ON CREATE SET lt.creation_date= datetime() 
-MERGE (ip:ip {name: $ip}) 
-ON CREATE SET ip.creation_date= datetime() 
-CREATE (ip)<-[:from]-(log:log {creation_date: datetime(), data: $data})-[:is]->(lt) 
-CREATE (li)<-[:log]-(log)
-RETURN ip.status as status
-"""
-
 query_upload_token = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
 MATCH (ck:cookie {session_name: $session_name}) 
@@ -429,7 +418,7 @@ def decrypt(encrypted_message, key, iv):
     return decryptor.update(encrypted_message) + decryptor.finalize() #message
 
 def digest(uuid, digest_name):
-    with open(app.config["UPLOAD_FOLDER"] + '/' + uuid, 'rb') as f:
+    with open(app.config["UPLOAD_FOLDER"] + '/' + str(uuid), 'rb') as f:
         digest = hashlib.file_digest(f, digest_name)
         return digest.hexdigest()
     return ""
@@ -485,24 +474,6 @@ def neo4j_get_file(config, file_uuid):
     #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return data['file']
 
-def logging(request):
-    if (('NEO4J_DRIVER' not in config) or (('NEO4J_DRIVER' in config) and (app.config['NEO4J_DRIVER'] == None))) :
-        return True
-
-    results = app.config['NEO4J_DRIVER'].execute_query(
-        query_logs,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= app.config['INSTANCE_NUMBER'],
-        ip= request.remote_addr,
-        data= ", ".join(request.values)
-    )
-
-    for result in results.records:
-        data = result.data()
-        if (('status' in data) and (data['status'] == 'banned')) :
-            return False
-    return True
-
 def install_config(config):
     query = ""
     with open("/app/cypher/file_types.cypher", 'rt') as f :
@@ -523,7 +494,31 @@ def session_check(request):
     if ((len(request.values) > 0) and ('token' in request.values) and (request.values['token'])):
         upload_token = request.values['token']
 
+    instance_state = "not_defined"
+    if is_ready(app.config['INSTANCE_CONFIG']):
+        instance_state = "ready"
+    elif is_wait_for_neo4j_credential(app.config['INSTANCE_CONFIG']):
+        instance_state = "wait_for_neo4j_credential"
+    elif is_wait_for_password(app.config['INSTANCE_CONFIG']):
+        instance_state = "wait_for_password"
+    else :
+        instance_state = "booting"
+
     session_data = {}
+    session_data['instance_config'] = {
+        'state': instance_state
+        }
+    session_data['request'] = {
+        'user_agent': {
+            'string': request.user_agent.string,
+            'platform': request.user_agent.platform,
+            'browser': request.user_agent.browser,
+            'version': request.user_agent.version,
+            'language': request.user_agent.language
+            },
+        'url_root': request.url_root,
+        'path': request.path
+        }
     session_data['ip'] = {'name': request.remote_addr}
     session_data['session'] = {'name': request.cookies.get('session_name')}
     session_data['token'] = {}
@@ -532,6 +527,13 @@ def session_check(request):
 
     if session_data['session']['name'] is None :
         session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
+
+    if session_data['instance_config']['state'] != 'ready':
+        session_data['ip']['status'] = "not_ready"
+        session_data['session']['state'] = "not_ready"
+        session_data['upload_token']['state'] = "not_ready"
+        session_data['token']['state'] = "not_ready"
+        return session_data
 
     results = app.config['NEO4J_DRIVER'].execute_query(
         query_session_check,
@@ -562,8 +564,16 @@ def session_check(request):
 
     return session_data
 
+def logging_session_data(session_data):
+    session_data = session_check(request)
+    session_data['user']['id'] = '... removed ...'
+    app.logger.info("url_root : %s", json.dumps(session_data['request']['url_root'], sort_keys=True, indent=4))
+    app.logger.info("ip : %s", json.dumps(session_data['ip']['name'], sort_keys=True, indent=4))
+    app.logger.debug("session_data : %s", json.dumps(session_data, sort_keys=True, indent=4))
+
 @app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):
+    session_data = session_check(request)
     read_block_size = 512
     data = {'uuid1': uuid1, 'uuid2': uuid2, 'identical' : False}
     with open(app.config["UPLOAD_FOLDER"] + '/' + uuid1, 'rb') as f1:
@@ -585,18 +595,21 @@ def route_file_diff(uuid1, uuid2):
 
 @app.route('/<uuid:uuid>/sha256', methods = ['GET'])
 def route_file_sha256(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
     data['sha256'] = digest(uuid, "sha256")
     return jsonify(data)
 
 @app.route('/<uuid:uuid>/sha512', methods = ['GET'])
 def route_file_sha512(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
     data['sha512'] = digest(uuid, "sha512")
     return jsonify(data)
 
 @app.route('/<uuid:uuid>/type', methods = ['POST'])
 def route_file_post_type(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('file_type' in request.values) and (request.values['file_type'] != "")
@@ -618,6 +631,7 @@ def route_file_post_type(uuid):
 
 @app.route('/<uuid:uuid>/type', methods = ['GET'])
 def route_file_get_type(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
     results = app.config['NEO4J_DRIVER'].execute_query(
         query_get_file_type,
@@ -638,6 +652,7 @@ def route_file_get_type(uuid):
 
 @app.route('/<uuid:uuid>/location', methods = ['POST'])
 def route_file_post_location(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")
@@ -659,6 +674,7 @@ def route_file_post_location(uuid):
 
 @app.route('/full_backup_first_file', methods = ['POST'])
 def route_file_get_full_backup_first_file():
+    session_data = session_check(request)
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
         results = app.config['NEO4J_DRIVER'].execute_query(
@@ -679,6 +695,7 @@ def route_file_get_full_backup_first_file():
 
 @app.route('/<uuid:uuid>/next_backup', methods = ['POST'])
 def route_file_get_next_backup(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
 
@@ -701,6 +718,7 @@ def route_file_get_next_backup(uuid):
 
 @app.route('/<uuid:uuid>/infos', methods = ['POST'])
 def route_file_post_infos(uuid):
+    session_data = session_check(request)
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
@@ -749,20 +767,14 @@ def route_file_post_infos(uuid):
 
 @app.route('/<uuid:uuid>/execute_query', methods = ['POST'])
 def route_execute_query(uuid):
-    app.logger.info("here")
-    try :
-        __uuid = UUID(uuid, version=1)
-    except TypeError:
-        abort(404)
-    except ValueError:
-        abort(404)
+    session_data = session_check(request)
 
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(__uuid))
+        file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
 
         query = ""
-        with open(app.config["UPLOAD_FOLDER"] + '/' + str(__uuid), 'rt') as f :
+        with open(app.config["UPLOAD_FOLDER"] + '/' + str(uuid), 'rt') as f :
             query = f.read()
 
         if (len(query) == 0):
@@ -788,11 +800,13 @@ def route_execute_query(uuid):
 
 @app.route('/<uuid:uuid>', methods = ['GET'])
 def route_download_file(uuid):
+    session_data = session_check(request)
     file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
-    return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
+    return send_from_directory(app.config["UPLOAD_FOLDER"], str(uuid), as_attachment=True, download_name=file_name)
 
 @app.route('/<string:hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
+    session_data = session_check(request)
     data = {'hook_name': hook_name}
     received_data = "not a json"
     if (request.is_json):
@@ -815,11 +829,10 @@ def route_hooks(hook_name):
 @app.route("/api/session_data", methods=["GET", "POST"])
 def route_session_data():
     session_data = session_check(request)
-    if session_data['ip']['status'] != 'ok':
-        abort(404)
+    logging_session_data(session_data)
 
-    session_data = session_check(request)
     session_data['user']['id'] = '... removed ...'
+    del session_data['token']
     return jsonify(session_data)
 
 @app.route("/api/register/begin", methods=["POST"])
@@ -977,12 +990,10 @@ def route_upload_token():
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
-    #if not(logging(request)):
-    #    abort(404)
+    session_data = session_check(request)
+    logging_session_data(session_data)
 
     if is_ready(app.config['INSTANCE_CONFIG']) : #is_ready
-        session_data = session_check(request)
-
         if ( (session_data['upload_token']['state'] == "ok")
             and (len(request.files) != 0) and ('file' in request.files) ):
 
@@ -1082,14 +1093,14 @@ if __name__ == "__main__":
 
     try :
         dns_name = os.environ['INSTANCE_DNS']
-        print("dns_name : %s" % (dns_name))
+        app.logger.info("dns_name : %s", dns_name)
         logs = os.system("/usr/bin/sudo /scripts/gen_certs.sh %s" % (dns_name))
 
         rp = PublicKeyCredentialRpEntity(name="Linked : %s" % (dns_name), id=dns_name)
         app.config['FIDO2_SERVER'] = Fido2Server(rp)
 
     finally:
-        print(logs)
+        app.logger.info("logs : %s", logs)
 
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
