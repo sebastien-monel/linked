@@ -562,7 +562,7 @@ def session_check(request):
 
     return session_data
 
-@app.route('/<uuid1>/<uuid2>/diff', methods = ['GET'])
+@app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):
     read_block_size = 512
     data = {'uuid1': uuid1, 'uuid2': uuid2, 'identical' : False}
@@ -583,19 +583,19 @@ def route_file_diff(uuid1, uuid2):
             return jsonify(data)
     return jsonify(data)
 
-@app.route('/<uuid>/sha256', methods = ['GET'])
+@app.route('/<uuid:uuid>/sha256', methods = ['GET'])
 def route_file_sha256(uuid):
     data = {'uuid': uuid}
     data['sha256'] = digest(uuid, "sha256")
     return jsonify(data)
 
-@app.route('/<uuid>/sha512', methods = ['GET'])
+@app.route('/<uuid:uuid>/sha512', methods = ['GET'])
 def route_file_sha512(uuid):
     data = {'uuid': uuid}
     data['sha512'] = digest(uuid, "sha512")
     return jsonify(data)
 
-@app.route('/<uuid>/type', methods = ['POST'])
+@app.route('/<uuid:uuid>/type', methods = ['POST'])
 def route_file_post_type(uuid):
     data = {'uuid': uuid}
 
@@ -616,7 +616,7 @@ def route_file_post_type(uuid):
 
     return jsonify(data)
 
-@app.route('/<uuid>/location', methods = ['POST'])
+@app.route('/<uuid:uuid>/location', methods = ['POST'])
 def route_file_post_location(uuid):
     data = {'uuid': uuid}
 
@@ -637,7 +637,7 @@ def route_file_post_location(uuid):
 
     return jsonify(data)
 
-@app.route('/<uuid>/type', methods = ['GET'])
+@app.route('/<uuid:uuid>/type', methods = ['GET'])
 def route_file_get_type(uuid):
     data = {'uuid': uuid}
     results = app.config['NEO4J_DRIVER'].execute_query(
@@ -677,7 +677,7 @@ def route_file_get_full_backup_first_file():
     #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return jsonify(data)
 
-@app.route('/<uuid>/next_backup', methods = ['POST'])
+@app.route('/<uuid:uuid>/next_backup', methods = ['POST'])
 def route_file_get_next_backup(uuid):
     data = {'uuid': uuid}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
@@ -699,7 +699,7 @@ def route_file_get_next_backup(uuid):
         #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
         return jsonify(data)
 
-@app.route('/<uuid>/infos', methods = ['POST'])
+@app.route('/<uuid:uuid>/infos', methods = ['POST'])
 def route_file_post_infos(uuid):
     data = {'uuid': uuid}
 
@@ -747,7 +747,7 @@ def route_file_post_infos(uuid):
 
     return jsonify(data)
 
-@app.route('/<uuid>/execute_query', methods = ['POST'])
+@app.route('/<uuid:uuid>/execute_query', methods = ['POST'])
 def route_execute_query(uuid):
     app.logger.info("here")
     try :
@@ -786,19 +786,12 @@ def route_execute_query(uuid):
     abort(404)
     return jsonify(data)
 
-@app.route('/<uuid>', methods = ['GET'])
+@app.route('/<uuid:uuid>', methods = ['GET'])
 def route_download_file(uuid):
-    try :
-        __uuid = UUID(uuid, version=1)
-    except TypeError:
-        abort(404)
-    except ValueError:
-        abort(404)
-
-    file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(__uuid))
+    file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
     return send_from_directory(app.config["UPLOAD_FOLDER"], uuid, as_attachment=True, download_name=file_name)
 
-@app.route('/<hook_name>/hooks', methods=['GET', 'POST'])
+@app.route('/<string:hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
     data = {'hook_name': hook_name}
     received_data = "not a json"
