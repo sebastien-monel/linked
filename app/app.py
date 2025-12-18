@@ -616,6 +616,26 @@ def route_file_post_type(uuid):
 
     return jsonify(data)
 
+@app.route('/<uuid:uuid>/type', methods = ['GET'])
+def route_file_get_type(uuid):
+    data = {'uuid': uuid}
+    results = app.config['NEO4J_DRIVER'].execute_query(
+        query_get_file_type,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER'],
+        file_uuid= uuid
+    )
+
+    for result in results.records:
+        data_line = result.data()
+        data['type_precision'] = data_line['type_precision']
+        data['type_ext'] = data_line['type_ext']
+        data['file_type'] = data_line['file_type']
+        break
+
+    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    return jsonify(data)
+
 @app.route('/<uuid:uuid>/location', methods = ['POST'])
 def route_file_post_location(uuid):
     data = {'uuid': uuid}
@@ -635,26 +655,6 @@ def route_file_post_location(uuid):
     else :
         app.logger.info("No location")
 
-    return jsonify(data)
-
-@app.route('/<uuid:uuid>/type', methods = ['GET'])
-def route_file_get_type(uuid):
-    data = {'uuid': uuid}
-    results = app.config['NEO4J_DRIVER'].execute_query(
-        query_get_file_type,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= app.config['INSTANCE_NUMBER'],
-        file_uuid= uuid
-    )
-
-    for result in results.records:
-        data_line = result.data()
-        data['type_precision'] = data_line['type_precision']
-        data['type_ext'] = data_line['type_ext']
-        data['file_type'] = data_line['file_type']
-        break
-
-    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return jsonify(data)
 
 @app.route('/full_backup_first_file', methods = ['POST'])
