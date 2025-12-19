@@ -21,8 +21,7 @@ import sys
 import json
 import math
 import ssl
-import uuid
-from uuid import UUID
+from uuid import uuid4
 import hashlib
 import base64
 import logging
@@ -71,7 +70,7 @@ LIMIT 10
 query_sha256_oldest_file = """
 MATCH (f:file {sha256: $sha256})-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name})
 RETURN f.file_uuid as uuid
-ORDER BY f.creation_date DESC
+ORDER BY f.creation_date ASC
 LIMIT 1
 """
 
@@ -450,9 +449,11 @@ def neo4j_connection(config):
     return True
 
 def upload_file(request):
+    uuid= uuid4()
+    file = request.files['file']
     data = {
-        'uuid': uuid.uuid1(),
-        'file': secure_filename(request.files['file'].filename),
+        'file_uuid': str(uuid),
+        'file': secure_filename(file.filename),
         'name': os.environ['INSTANCE_DNS'],
         'instance_number': app.config['INSTANCE_NUMBER']
     }
@@ -460,22 +461,20 @@ def upload_file(request):
     archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (data['file_uuid'])
     app.logger.info("summary : %s", archive_cmd)
 
-    file.save(os.path.join(app.config['UPLOAD_FOLDER'], data['file_uuid']))
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], data['file_uuid'] ))
     logs = os.system(archive_cmd)
 
-    data['sha256'] = digest(data['file_uuid'], "sha256")
-    data['file_uuid'] = str(data['uuid'])
-
-    results = app.config['NEO4J_DRIVER'].execute_query(query_put_file, parameters_ = data).summary
-    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-
+    data['sha256'] = digest(uuid, "sha256")
     sha256_identique = sha256_oldest_file(data['sha256'])
 
-    if ((sha256_identique != None) and ( file_diff(file_uuid, sha256_identique['uuid'])) ):
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_put_file, parameters_ = data)
+    app.logger.info("summary : %s - %s ms", summary.counters.nodes_created, summary.result_available_after)
+
+    if (('uuid' in sha256_identique) and ( file_diff(data['file_uuid'], sha256_identique['uuid'])) ):
         data['uuid_identique']= sha256_identique['uuid']
 
-        results = app.config['NEO4J_DRIVER'].execute_query(query_same_file, parameters_ = data).summary
-        app.logger.info("same_file - summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+        records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_same_file, parameters_ = data)
+        app.logger.info("same_file - summary : %s - %s ms", summary.counters.nodes_created, summary.result_available_after)
 
     return data
 
