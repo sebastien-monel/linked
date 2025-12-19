@@ -169,10 +169,12 @@ CREATE (li)<-[:log]-(log)-[:from]->(hook)
 query_upload_token = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
 MATCH (ck:cookie {session_name: $session_name}) 
+MATCH (ip:ip {name: $ip}) 
 MERGE (t:upload_token {token: $upload_token}) 
-ON CREATE SET t.creation_date= datetime(), t.state = 'ok' 
+ON CREATE SET t.creation_date= datetime(), t.state = 'validation' 
 MERGE (li)<-[:for]-(t) 
 MERGE (ck)<-[:from]-(t) 
+MERGE (t)-[:for]->(ip) 
 RETURN t.token as token
 """
 
@@ -241,6 +243,9 @@ MERGE (li)<-[:to]-(ck)
 MERGE (ck)-[:from]->(ip) 
 WITH ip, ck, t, p, dns 
 OPTIONAL MATCH (ip)<-[:for]-(ut:upload_token {token: $upload_token})-[:for]->(li_ut:linked_instance)-[:in]->(dns) 
+WITH ip, ck, t, p, dns, ut 
+OPTIONAL MATCH (ip)<-[:for]-(ut2:upload_token)
+WITH ip, ck, t, p, dns, ut, count(ut2) as nb_upload_token 
 RETURN 
     ip.status as ip_status, 
     ck.session_state as session_state, 
@@ -257,7 +262,9 @@ RETURN
     p.prenom as user_display_name, 
     dns.dns as dest_ut, 
     ip.name as source_ut, 
-    coalesce(ut.state, "no_token") as ut_state
+    ut.token as upload_token, 
+    coalesce(ut.state, "no_token") as ut_state, 
+    nb_upload_token
 """
 
 query_post_file_infos = """
@@ -509,10 +516,6 @@ def install_config(config):
     return True
 
 def session_check(request):
-    upload_token = None
-    if ((len(request.values) > 0) and ('token' in request.values) and (request.values['token'])):
-        upload_token = request.values['token']
-
     instance_state = "not_defined"
     if is_ready(app.config['INSTANCE_CONFIG']):
         instance_state = "ready"
@@ -524,9 +527,17 @@ def session_check(request):
         instance_state = "booting"
 
     session_data = {}
-    session_data['instance_config'] = {
-        'state': instance_state
-        }
+
+    if (len(request.values) > 0) and ('token' in request.values) and (request.values['token']):
+        session_data['upload_token'] = {'token': request.values['token']}
+    else :
+        session_data['upload_token'] = {'token': None}
+
+    session_data['instance_config'] = {'state': instance_state}
+    session_data['ip'] = {'name': request.remote_addr}
+    session_data['session'] = {'name': request.cookies.get('session_name')}
+    session_data['token'] = {}
+    session_data['user'] = {}
     session_data['request'] = {
         'user_agent': {
             'string': request.user_agent.string,
@@ -538,11 +549,6 @@ def session_check(request):
         'url_root': request.url_root,
         'path': request.path
         }
-    session_data['ip'] = {'name': request.remote_addr}
-    session_data['session'] = {'name': request.cookies.get('session_name')}
-    session_data['token'] = {}
-    session_data['user'] = {}
-    session_data['upload_token'] = {'token_name': upload_token}
 
     if session_data['session']['name'] is None :
         session_data['session']['name'] = gen_rand(64) #os.urandom(32).hex()
@@ -560,12 +566,13 @@ def session_check(request):
         instance_number= app.config['INSTANCE_NUMBER'],
         ip= session_data['ip']['name'],
         session_name= session_data['session']['name'],
-        upload_token= session_data['upload_token']['token_name']
+        upload_token= session_data['upload_token']['token']
     )
 
     for result in results.records:
         data = result.data()
         session_data['ip']['status'] = data['ip_status']
+        session_data['ip']['nb_upload_token'] = data['nb_upload_token']
         session_data['session']['state'] = data['session_state']
         session_data['session']['challenge'] = data['session_challenge']
         session_data['session']['user_verification'] = data['session_user_verification']
@@ -580,6 +587,13 @@ def session_check(request):
         session_data['upload_token']['dest'] = data['dest_ut']
         session_data['upload_token']['source'] = data['source_ut']
         session_data['upload_token']['state'] = data['ut_state']
+        session_data['upload_token']['token'] = data['upload_token']
+
+    if ((session_data['upload_token']['state'] == 'ok')
+        and (len(request.values) > 0) and ('token' in request.values) and (request.values['token'])
+        and session_data['upload_token']['token'] == request.values['token']
+        ):
+        session_data['upload_token']['state'] = 'verified'
 
     return session_data
 
@@ -746,7 +760,7 @@ def route_file_get_full_backup_first_file():
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
-    if (session_data['upload_token']['state'] == "ok"):
+    if (session_data['upload_token']['state'] != "verified"):
         abort(401)
 
     data = {}
@@ -916,6 +930,9 @@ def route_hooks(hook_name):
 @app.route("/api/session_data", methods=["GET", "POST"])
 def route_session_data():
     session_data = session_check(request)
+    if session_data['instance_config']['state'] != 'ready':
+        abort(404)
+
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
@@ -1060,10 +1077,13 @@ def route_authenticate_complete():
 @app.route("/api/upload_token", methods=["GET", "POST"])
 def route_upload_token():
     session_data = session_check(request)
-    if session_data['ip']['status'] != 'ok':
+    if session_data['instance_config']['state'] != 'ready':
         abort(404)
 
-    if session_data['session']['state'] != 'valid':
+    if session_data['ip']['status'] == 'banned':
+        abort(404)
+
+    if session_data['ip']['nb_upload_token'] > 5:
         abort(401)
 
     config_data = {
@@ -1071,15 +1091,18 @@ def route_upload_token():
         'instance_number': app.config['INSTANCE_NUMBER'],
         'ip': session_data['ip']['name'],
         'session_name': session_data['session']['name'],
-        'upload_token': gen_rand(64)
+        'upload_token': session_data['upload_token']['token']
     }
 
-    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_upload_token, parameters_= config_data)
-    app.logger.info("summary : %s ms", summary.result_available_after)
+    if (session_data['upload_token']['state'] == "no_token"):
+        config_data['upload_token'] = gen_rand(64)
 
-    for record in records:
-        config_data['token'] = record['token']
-        break
+        records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_upload_token, parameters_= config_data)
+        app.logger.info("summary : %s ms", summary.result_available_after)
+
+        for record in records:
+            config_data['token'] = record['token']
+            break
 
     return jsonify(config_data)
 
@@ -1091,7 +1114,7 @@ def route_upload_file_get():
         abort(404)
 
     if is_ready(app.config['INSTANCE_CONFIG']) : #is_ready
-        if ( (session_data['upload_token']['state'] == "ok")
+        if ( (session_data['upload_token']['state'] == "verified")
             and (len(request.files) != 0) and ('file' in request.files) ):
 
             if session_data['ip']['status'] != 'ok':
