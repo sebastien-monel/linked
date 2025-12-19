@@ -68,6 +68,13 @@ ORDER BY n_next.creation_date, n_next.file_uuid
 LIMIT 10
 """
 
+query_sha256_oldest_file = """
+MATCH (f:file {sha256: $sha256})-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name})
+RETURN f.file_uuid as uuid
+ORDER BY f.creation_date DESC
+LIMIT 1
+"""
+
 query_startup = """
 MERGE (dns:machine {dns:$name}) 
 ON CREATE SET dns.creation_date= datetime() 
@@ -91,6 +98,12 @@ ON CREATE SET
 MERGE (lt:log_type {name:'log file'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
+"""
+
+query_same_file = """
+MATCH (f_identique:file {file_uuid: $uuid_identique})-[:in]->(:linked_instance)-[:in]->(:machine {dns:$name})
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(:linked_instance)-[:in]->(:machine {dns:$name})
+CREATE (f)-[:same_as]->(f_identique)
 """
 
 query_get_file = """
@@ -436,26 +449,32 @@ def neo4j_connection(config):
     return True
 
 def upload_file(request):
-    file = request.files['file']
-    filename = secure_filename(file.filename)
-    data = {}
-    file_uuid = str(uuid.uuid1())
-    data['uuid'] = file_uuid
-    file.save(os.path.join(app.config['UPLOAD_FOLDER'], file_uuid))
-    archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (file_uuid)
-    logs = os.system(archive_cmd)
-    data['sha256'] = digest(data['uuid'], "sha256")
+    data = {
+        'uuid': uuid.uuid1(),
+        'file': secure_filename(request.files['file'].filename),
+        'name': os.environ['INSTANCE_DNS'],
+        'instance_number': app.config['INSTANCE_NUMBER']
+    }
+
+    archive_cmd = "/usr/bin/sudo /scripts/chown_archive.sh %s" % (data['file_uuid'])
     app.logger.info("summary : %s", archive_cmd)
 
-    results = app.config['NEO4J_DRIVER'].execute_query(
-        query_put_file,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= app.config['INSTANCE_NUMBER'],
-        file= filename,
-        file_uuid= file_uuid,
-        sha256=data['sha256']
-    ).summary
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], data['file_uuid']))
+    logs = os.system(archive_cmd)
+
+    data['sha256'] = digest(data['file_uuid'], "sha256")
+    data['file_uuid'] = str(data['uuid'])
+
+    results = app.config['NEO4J_DRIVER'].execute_query(query_put_file, parameters_ = data).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+
+    sha256_identique = sha256_oldest_file(data['sha256'])
+
+    if ((sha256_identique != None) and ( file_diff(file_uuid, sha256_identique['uuid'])) ):
+        data['uuid_identique']= sha256_identique['uuid']
+
+        results = app.config['NEO4J_DRIVER'].execute_query(query_same_file, parameters_ = data).summary
+        app.logger.info("same_file - summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
 
     return data
 
@@ -591,6 +610,23 @@ def file_diff(uuid1, uuid2):
             return data
     return data
 
+def sha256_oldest_file(sha256):
+    data = {'sha256': sha256}
+
+    results = app.config['NEO4J_DRIVER'].execute_query(
+        query_sha256_oldest_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER'],
+        sha256= sha256
+    )
+
+    for result in results.records:
+        data_line = result.data()
+        data['uuid'] = data_line['uuid']
+        break
+
+    return data
+
 @app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):
     session_data = session_check(request)
@@ -599,6 +635,16 @@ def route_file_diff(uuid1, uuid2):
 
     data = file_diff(uuid1, uuid2)
     return jsonify(data)
+
+@app.route('/sha256_oldest_file/<string:sha256>', methods = ['GET', 'POST'])
+def route_sha256_oldest_file(sha256):
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    data = sha256_oldest_file(sha256)
+    return jsonify(data)
+
 
 @app.route('/<uuid:uuid>/sha256', methods = ['GET'])
 def route_file_sha256(uuid):
@@ -700,20 +746,22 @@ def route_file_get_full_backup_first_file():
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
-    data = {}
-    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        results = app.config['NEO4J_DRIVER'].execute_query(
-            query_full_backup_first_file,
-            name= os.environ['INSTANCE_DNS'],
-            instance_number= app.config['INSTANCE_NUMBER']
-        )
+    if (session_data['upload_token']['state'] == "ok"):
+        abort(401)
 
-        for result in results.records:
-            data_line = result.data()
-            data['uuid'] = data_line['uuid']
-            #data['next'] = data_line['next']
-            #data['actual'] = data_line['actual']
-            break
+    data = {}
+    results = app.config['NEO4J_DRIVER'].execute_query(
+        query_full_backup_first_file,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER']
+    )
+
+    for result in results.records:
+        data_line = result.data()
+        data['uuid'] = data_line['uuid']
+        #data['next'] = data_line['next']
+        #data['actual'] = data_line['actual']
+        break
 
     #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return jsonify(data)
