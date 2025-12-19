@@ -174,6 +174,7 @@ MERGE (t:upload_token {token: $upload_token})
 ON CREATE SET t.creation_date= datetime(), t.state = 'ok' 
 MERGE (li)<-[:for]-(t) 
 MERGE (ck)<-[:from]-(t) 
+RETURN t.token as token
 """
 
 query_token_register = """
@@ -323,7 +324,7 @@ def save_config_file(config):
     if 'key' in config :
         b_token = bytes(config['token'], 'utf-8')
         token = encrypt(
-                b_token.ljust(math.trunc(len(b_token) / 16) + 16, b'\00'), #.zfill(16),
+                b_token.ljust(math.trunc(len(b_token) / 16) * 16 + 16, b'\00'), #.zfill(16),
                 config['key'],
                 config['iv']
             ).hex()
@@ -331,7 +332,7 @@ def save_config_file(config):
         if (config['neo4j']['password'] != ""):
             b_neo4j_password = bytes(config['neo4j']['password'], 'utf-8')
             neo4j_password = encrypt(
-                    b_neo4j_password.ljust(math.trunc(len(b_neo4j_password) / 16) + 16, b'\00'),
+                    b_neo4j_password.ljust(math.trunc(len(b_neo4j_password) / 16) * 16 + 16, b'\00'),
                     config['key'],
                     config['iv']
                 ).hex()
@@ -1074,9 +1075,14 @@ def route_upload_token():
         'upload_token': gen_rand(64)
     }
 
-    results = app.config['NEO4J_DRIVER'].execute_query(query_upload_token, parameters_= config_data)
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_upload_token, parameters_= config_data)
+    app.logger.info("summary : %s ms", summary.result_available_after)
 
-    return jsonify({"status": "OK"})
+    for record in records:
+        config_data['token'] = record['token']
+        break
+
+    return jsonify(config_data)
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
