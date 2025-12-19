@@ -574,6 +574,9 @@ def logging_session_data(session_data):
 @app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     read_block_size = 512
     data = {'uuid1': uuid1, 'uuid2': uuid2, 'identical' : False}
     with open(app.config["UPLOAD_FOLDER"] + '/' + uuid1, 'rb') as f1:
@@ -596,6 +599,9 @@ def route_file_diff(uuid1, uuid2):
 @app.route('/<uuid:uuid>/sha256', methods = ['GET'])
 def route_file_sha256(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
     data['sha256'] = digest(uuid, "sha256")
     return jsonify(data)
@@ -603,6 +609,9 @@ def route_file_sha256(uuid):
 @app.route('/<uuid:uuid>/sha512', methods = ['GET'])
 def route_file_sha512(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
     data['sha512'] = digest(uuid, "sha512")
     return jsonify(data)
@@ -610,6 +619,9 @@ def route_file_sha512(uuid):
 @app.route('/<uuid:uuid>/type', methods = ['POST'])
 def route_file_post_type(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('file_type' in request.values) and (request.values['file_type'] != "")
@@ -632,6 +644,9 @@ def route_file_post_type(uuid):
 @app.route('/<uuid:uuid>/type', methods = ['GET'])
 def route_file_get_type(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
     results = app.config['NEO4J_DRIVER'].execute_query(
         query_get_file_type,
@@ -653,6 +668,9 @@ def route_file_get_type(uuid):
 @app.route('/<uuid:uuid>/location', methods = ['POST'])
 def route_file_post_location(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")
@@ -675,6 +693,9 @@ def route_file_post_location(uuid):
 @app.route('/full_backup_first_file', methods = ['POST'])
 def route_file_get_full_backup_first_file():
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
         results = app.config['NEO4J_DRIVER'].execute_query(
@@ -696,6 +717,9 @@ def route_file_get_full_backup_first_file():
 @app.route('/<uuid:uuid>/next_backup', methods = ['POST'])
 def route_file_get_next_backup(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
 
@@ -719,6 +743,9 @@ def route_file_get_next_backup(uuid):
 @app.route('/<uuid:uuid>/infos', methods = ['POST'])
 def route_file_post_infos(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     data = {'uuid': uuid}
 
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
@@ -768,6 +795,8 @@ def route_file_post_infos(uuid):
 @app.route('/<uuid:uuid>/execute_query', methods = ['POST'])
 def route_execute_query(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
 
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
@@ -801,12 +830,18 @@ def route_execute_query(uuid):
 @app.route('/<uuid:uuid>', methods = ['GET'])
 def route_download_file(uuid):
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
     return send_from_directory(app.config["UPLOAD_FOLDER"], str(uuid), as_attachment=True, download_name=file_name)
 
 @app.route('/<string:hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
     session_data = session_check(request)
+    #if session_data['ip']['status'] != 'ok':
+    #    abort(404)
+
     data = {'hook_name': hook_name}
     received_data = "not a json"
     if (request.is_json):
@@ -829,6 +864,9 @@ def route_hooks(hook_name):
 @app.route("/api/session_data", methods=["GET", "POST"])
 def route_session_data():
     session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
     logging_session_data(session_data)
 
     session_data['user']['id'] = '... removed ...'
@@ -992,6 +1030,8 @@ def route_upload_token():
 def route_upload_file_get():
     session_data = session_check(request)
     logging_session_data(session_data)
+    if (session_data['ip']['status'] == 'banned'):
+        abort(404)
 
     if is_ready(app.config['INSTANCE_CONFIG']) : #is_ready
         if ( (session_data['upload_token']['state'] == "ok")
