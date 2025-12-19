@@ -571,16 +571,11 @@ def logging_session_data(session_data):
     app.logger.info("ip : %s", json.dumps(session_data['ip']['name'], sort_keys=True, indent=4))
     app.logger.debug("session_data : %s", json.dumps(session_data, sort_keys=True, indent=4))
 
-@app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
-def route_file_diff(uuid1, uuid2):
-    session_data = session_check(request)
-    if session_data['ip']['status'] != 'ok':
-        abort(404)
-
+def file_diff(uuid1, uuid2):
     read_block_size = 512
     data = {'uuid1': uuid1, 'uuid2': uuid2, 'identical' : False}
-    with open(app.config["UPLOAD_FOLDER"] + '/' + uuid1, 'rb') as f1:
-        with open(app.config["UPLOAD_FOLDER"] + '/' + uuid2, 'rb') as f2 :
+    with open(app.config["UPLOAD_FOLDER"] + '/' + str(uuid1), 'rb') as f1:
+        with open(app.config["UPLOAD_FOLDER"] + '/' + str(uuid2), 'rb') as f2 :
             __end__ = False
             data['identical'] = True
             while not(__end__):
@@ -593,7 +588,16 @@ def route_file_diff(uuid1, uuid2):
                 else :
                     data['identical'] = False
                     __end__ = True
-            return jsonify(data)
+            return data
+    return data
+
+@app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
+def route_file_diff(uuid1, uuid2):
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    data = file_diff(uuid1, uuid2)
     return jsonify(data)
 
 @app.route('/<uuid:uuid>/sha256', methods = ['GET'])
@@ -1036,6 +1040,10 @@ def route_upload_file_get():
     if is_ready(app.config['INSTANCE_CONFIG']) : #is_ready
         if ( (session_data['upload_token']['state'] == "ok")
             and (len(request.files) != 0) and ('file' in request.files) ):
+
+            if session_data['ip']['status'] != 'ok':
+                #abort(404)
+                return render_template('simple_uploader.html', title='Upload file')
 
             try :
                 data = upload_file(request)
