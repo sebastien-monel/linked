@@ -150,7 +150,7 @@ MERGE (ip:ip {name: $ip, status:"banned"})
 ON CREATE SET 
     ip.creation_date = datetime(), 
     ip.status = "banned" 
-ON UPDATE SET 
+ON MATCH SET 
     ip.status = coalesce( ip.status, "banned") 
 MERGE (ip)-[:log_try_sni]->(dns)
 """
