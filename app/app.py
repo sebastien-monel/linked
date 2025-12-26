@@ -143,7 +143,7 @@ LIMIT 2
 """
 
 query_banned_ip = """
-MERGE (dns:machine {dns:$to_dns}) 
+MERGE (dns:machine {dns:$dns}) 
 ON CREATE SET 
     dns.creation_date = datetime() 
 MERGE (ip:ip {name: $ip, status:"banned"}) 
@@ -152,7 +152,7 @@ ON CREATE SET
     ip.status = "banned" 
 ON MATCH SET 
     ip.status = coalesce( ip.status, "banned") 
-MERGE (ip)-[:log_try_sni]->(dns)
+MERGE (ip)-[:log_try_sni {sni:$to_dns}]->(dns)
 """
 
 query_post_file_type = """
@@ -537,11 +537,15 @@ def ssl_sni_check(ssl_socket, sni_name, ssl_ctx):
             app.logger.warning(" !!! not logged in database !!! ")
             return ssl.ALERT_DESCRIPTION_HANDSHAKE_FAILURE
 
+        if sni_name is None :
+            sni_name = "NULL"
+
         results = app.config['NEO4J_DRIVER'].execute_query(
             query_banned_ip,
-            to_dns= os.environ['INSTANCE_DNS'],
+            dns= os.environ['INSTANCE_DNS'],
             instance_number= app.config['INSTANCE_NUMBER'],
-            ip= ssl_socket.getpeername()[0]
+            ip= ssl_socket.getpeername()[0],
+            to_dns= sni_name
         )
 
         return ssl.ALERT_DESCRIPTION_HANDSHAKE_FAILURE
