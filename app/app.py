@@ -25,6 +25,7 @@ from uuid import uuid4
 import hashlib
 import base64
 import logging
+import requests
 
 import string
 import random
@@ -679,6 +680,16 @@ def sha256_oldest_file(sha256):
         break
 
     return data
+
+@app.route('/get_github_infos', methods = ['GET'])
+def route_get_github_infos():
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    r = requests.get("https://api.github.com/meta")
+
+    return jsonify(r.json())
 
 @app.route('/<uuid:uuid1>/<uuid:uuid2>/diff', methods = ['GET'])
 def route_file_diff(uuid1, uuid2):

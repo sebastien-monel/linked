@@ -14,3 +14,4 @@ cryptography==46.0.3
 #google-auth==2.29.0
 fido2==2.0.0
 certbot==5.1.0
+requests==2.32.5
