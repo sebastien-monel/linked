@@ -38,6 +38,7 @@ UPLOAD_FOLDER = '/uploaded_files'
 
 app = Flask(__name__, static_url_path="/static/", static_folder="/app/static/")
 app.secret_key = os.urandom(32)  # Used for session.
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['FIDO2_SERVER'] = None
 app.config['INSTANCE_NUMBER'] = os.urandom(32).hex()
@@ -139,6 +140,19 @@ RETURN f.file as file_name,
     su.name as user 
 ORDER BY f.creation_date DESC 
 LIMIT 2
+"""
+
+query_banned_ip = """
+MERGE (dns:machine {dns:$to_dns}) 
+ON CREATE SET 
+    dns.creation_date = datetime() 
+MERGE (ip:ip {name: $ip, status:"banned"}) 
+ON CREATE SET 
+    ip.creation_date = datetime(), 
+    ip.status = "banned" 
+ON UPDATE SET 
+    ip.status = coalesce( ip.status, "banned") 
+MERGE (ip)-[:log_try_sni]->(dns)
 """
 
 query_post_file_type = """
@@ -514,6 +528,27 @@ def install_config(config):
 
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
+
+def ssl_sni_check(ssl_socket, sni_name, ssl_ctx):
+    if (sni_name != os.environ['INSTANCE_DNS']):
+        app.logger.warning("... ssl_sni_check to %s from %s ..." % (sni_name, ssl_socket.getpeername() ))
+
+        if (app.config['NEO4J_DRIVER'] is None ):
+            app.logger.warning(" !!! not logged in database !!! ")
+            return ssl.ALERT_DESCRIPTION_HANDSHAKE_FAILURE
+
+        results = app.config['NEO4J_DRIVER'].execute_query(
+            query_banned_ip,
+            to_dns= os.environ['INSTANCE_DNS'],
+            instance_number= app.config['INSTANCE_NUMBER'],
+            ip= ssl_socket.getpeername()[0]
+        )
+
+        return ssl.ALERT_DESCRIPTION_HANDSHAKE_FAILURE
+        #return ssl.ALERT_DESCRIPTION_INTERNAL_ERROR
+
+    app.logger.info("... ssl_sni_check to %s from %s ..." % (sni_name, ssl_socket.getpeername() ))
+    return None
 
 def session_check(request):
     instance_state = "not_defined"
@@ -1229,6 +1264,7 @@ if __name__ == "__main__":
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
+        context.sni_callback = ssl_sni_check
 
     except FileNotFoundError:
         app.run(host='::', port='443') #debug=True
