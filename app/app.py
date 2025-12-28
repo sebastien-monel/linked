@@ -2,7 +2,7 @@
 from flask import (
     Flask, jsonify, flash, request, redirect, url_for,
     render_template, send_file, send_from_directory, make_response,
-    abort
+    abort, Response
     )
 from werkzeug.utils import secure_filename
 
@@ -48,6 +48,22 @@ app.config['NEO4J_DRIVER'] = None
 app.logger.setLevel(logging.INFO)
 
 #fido2.features.webauthn_json_mapping.enabled = True #TO_REMOVE
+
+query_data = """
+MATCH (n1)-[r]->(n2) 
+WHERE ( id(n1) = $node_id 
+   OR   id(n2) = $node_id ) 
+RETURN 
+    type(r) as rel_type, 
+    id(n1) as source, 
+    id(n2) as target, 
+    type(r) as value, 
+    n1.name as name_n1, 
+    labels(n1) as label_n1, 
+    n2.name as name_n2, 
+    labels(n2) as label_n2 
+LIMIT 20
+"""
 
 query_full_backup_first_file = """
 MATCH (n:file)-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name}) 
@@ -1027,7 +1043,7 @@ def route_register_begin():
         pass
 
     resp = jsonify(dict(options))
-    resp.set_cookie('session_name', session_data['session']['name'])
+    resp.set_cookie('session_name', session_data['session']['name'], secure=True, httponly=True, samesite='Strict')
     return resp
 
 @app.route("/api/register/complete", methods=["POST"])
@@ -1093,7 +1109,7 @@ def route_authenticate_begin():
         pass
 
     resp = jsonify(dict(options))
-    resp.set_cookie('session_name', session_data['session']['name'])
+    resp.set_cookie('session_name', session_data['session']['name'], secure=True, httponly=True, samesite='Strict')
     return resp
 
 @app.route("/api/authenticate/complete", methods=["POST"])
@@ -1158,6 +1174,63 @@ def route_upload_token():
             break
 
     return jsonify(config_data)
+
+@app.route('/graph.css', methods=['GET', 'POST'])
+def route_graph_css():
+    session_data = session_check(request)
+    if (session_data['session']['state'] != 'valid'):
+        abort(404)
+
+    return Response(render_template('graph.css'), mimetype='text/css')
+
+@app.route('/graph.js', methods=['GET', 'POST'])
+def route_graph_js():
+    session_data = session_check(request)
+    if (session_data['session']['state'] != 'valid'):
+        abort(404)
+
+    return Response(render_template('graph.js'), mimetype='text/javascript')
+
+@app.route('/<int:node_id>/data.json', methods=['GET', 'POST'])
+def route_data_json(node_id):
+    session_data = session_check(request)
+    if (session_data['session']['state'] != 'valid'):
+        abort(404)
+
+    nodes_presence = []
+    nodes = []
+    links = []
+    #if ('node_id' not in request.values):
+    #    return None
+
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_data,
+        parameters_= {'node_id': node_id
+        })
+
+    app.logger.info("summary : %s ms", summary.result_available_after)
+    for data in records:
+        if ( data['rel_type'] ) :
+            links.append({'source': data['source'],
+                'target': data['target'],
+                'value': data['value'],
+                'type': data['rel_type']
+                })
+
+        if data['source'] not in nodes_presence:
+            nodes.append({'id': data['source'],
+                'url': "/graph.js?node_id=%s" % data['source'],
+                'name': data['name_n1'],
+                'labels': data['label_n1']})
+            nodes_presence.append(data['source'])
+
+        if data['target'] not in nodes_presence:
+            nodes.append({'id': data['target'],
+                'url': "/graph.js?node_id=%s" % data['target'],
+                'name': data['name_n2'],
+                'labels': data['label_n2']})
+            nodes_presence.append(data['target'])
+
+    return jsonify({ 'nodes': nodes, 'links': links })
 
 @app.route('/__my_login__', methods=['GET', 'POST'])
 def route_login():
