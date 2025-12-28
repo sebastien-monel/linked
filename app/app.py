@@ -58,9 +58,9 @@ RETURN
     elementId(n1) as source, 
     elementId(n2) as target, 
     type(r) as value, 
-    n1.name as name_n1, 
+    coalesce(n1.name, "no name") as name_n1, 
     labels(n1) as label_n1, 
-    n2.name as name_n2, 
+    coalesce(n2.name, "no name") as name_n2, 
     labels(n2) as label_n2 
 LIMIT 20
 """
@@ -1218,14 +1218,14 @@ def route_data_json(node_id):
 
         if data['source'] not in nodes_presence:
             nodes.append({'id': data['source'],
-                'url': "/graph.js?node_id=%s" % data['source'],
+                'url': "/__my_login__?node_id=%s" % data['source'],
                 'name': data['name_n1'],
                 'labels': data['label_n1']})
             nodes_presence.append(data['source'])
 
         if data['target'] not in nodes_presence:
             nodes.append({'id': data['target'],
-                'url': "/graph.js?node_id=%s" % data['target'],
+                'url': "/__my_login__?node_id=%s" % data['target'],
                 'name': data['name_n2'],
                 'labels': data['label_n2']})
             nodes_presence.append(data['target'])
