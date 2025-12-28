@@ -51,12 +51,12 @@ app.logger.setLevel(logging.INFO)
 
 query_data = """
 MATCH (n1)-[r]->(n2) 
-WHERE ( id(n1) = $node_id 
-   OR   id(n2) = $node_id ) 
+WHERE ( elementId(n1) = $node_id 
+   OR   elementId(n2) = $node_id ) 
 RETURN 
     type(r) as rel_type, 
-    id(n1) as source, 
-    id(n2) as target, 
+    elementId(n1) as source, 
+    elementId(n2) as target, 
     type(r) as value, 
     n1.name as name_n1, 
     labels(n1) as label_n1, 
@@ -1191,7 +1191,7 @@ def route_graph_js():
 
     return Response(render_template('graph.js'), mimetype='text/javascript')
 
-@app.route('/<int:node_id>/data.json', methods=['GET', 'POST'])
+@app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
 def route_data_json(node_id):
     session_data = session_check(request)
     if (session_data['session']['state'] != 'valid'):

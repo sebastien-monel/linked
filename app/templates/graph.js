@@ -4,10 +4,8 @@ const params = new URLSearchParams(document.location.search);
 
 let node_id;
 if (params.has("node_id")) {
-//    url = "/data.json?node_id=".concat(params.get("node_id")); // is the string "Jonathan"
     node_id = params.get("node_id");
 } else {
-//    url = "/data.json?node_id=1"
     node_id = "1";
 }
 
