@@ -1,7 +1,6 @@
-<html>
-<head>
-  <title>{{title}}</title>
+{% extends 'base.html' %}
 
+{% block javascript %}
   <script type="text/javascript">
     async function register() {
       const mo = await import("/static/webauthn-json.browser-ponyfill.js");
@@ -54,9 +53,9 @@
 
     //window.start = start; /*authenticate || register*/
   </script>
+{% endblock %}
 
-</head>
-<body>
+{% block content %}
   <div id="initial">
     <button onclick="register();">Register</button>
     <button onclick="authenticate();">Authenticate</button>
@@ -66,6 +65,4 @@
     <p>Touch your authenticator device now...</p>
     <a href="/">Cancel</a>
   </div>
-
-</body>
-</html>
+{% endblock %}

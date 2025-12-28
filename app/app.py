@@ -1165,7 +1165,7 @@ def route_login():
     if (session_data['ip']['status'] == 'banned'):
         abort(404)
 
-    return render_template('index.html', title=session_data['session']['state'])
+    return render_template('index.html', title='login', status= 'ok',session_status=session_data['session']['state'])
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
@@ -1180,30 +1180,30 @@ def route_upload_file_get():
 
             if session_data['ip']['status'] != 'ok':
                 #abort(404)
-                return render_template('simple_uploader.html', title='Upload file')
+                return render_template('simple_uploader.html', title='Upload file', status='ok', session_status=session_data['session']['state'])
 
             try :
                 data = upload_file(request)
                 return jsonify(data)
 
             except PermissionError:
-                return render_template('simple_uploader.html', title='Upload file - permission error')
+                return render_template('simple_uploader.html', title='Upload file', status='permission error', session_status=session_data['session']['state'])
 
         elif (request.method == 'POST'):
             #if ('token' not in request.values):
-            #    return render_template('simple_uploader.html', title='Upload file - missing token')
+            #    return render_template('simple_uploader.html', title='Upload file', status='missing token', session_status=session_data['session']['state'])
 
             #elif (('token' in request.values) and (request.values['token'] != app.config['INSTANCE_CONFIG']['token'])):
-            #    return render_template('simple_uploader.html', title='Upload file - wrong token')
+            #    return render_template('simple_uploader.html', title='Upload file', status='wrong token', session_status=session_data['session']['state'])
 
             if ('file' not in request.files):
-                return render_template('simple_uploader.html', title='Upload file - missing file')
+                return render_template('simple_uploader.html', title='Upload file', status='missing file', session_status=session_data['session']['state'])
 
             else :
-                return render_template('simple_uploader.html', title='Upload file - errors in information')
+                return render_template('simple_uploader.html', title='Upload file', status='errors in information', session_status=session_data['session']['state'])
 
         else :
-            return render_template('simple_uploader.html', title='Upload file')
+            return render_template('simple_uploader.html', title='Upload file', status='ok', session_status=session_data['session']['state'])
 
     elif is_wait_for_neo4j_credential(app.config['INSTANCE_CONFIG']): #is_wait_for_neo4j_credential
         if verify_post_neo4j_credential(request): #verify_post_neo4j_credential
@@ -1214,17 +1214,17 @@ def route_upload_file_get():
 
             if neo4j_connection(app.config['INSTANCE_CONFIG']):
                 if install_config(app.config['INSTANCE_CONFIG']):
-                    return render_template('simple_uploader.html', title='Upload file - database connected')
+                    return render_template('simple_uploader.html', title='Upload file', status='database connected', session_status=session_data['session']['state'])
                 else :
-                    return render_template('simple_uploader.html', title='Upload file - database configuration failed')
+                    return render_template('simple_uploader.html', title='Upload file', status='database configuration failed', session_status=session_data['session']['state'])
             else :
-                return render_template('simple_uploader.html', title='Upload file - connection failed')
+                return render_template('simple_uploader.html', title='Upload file', status='connection failed', session_status=session_data['session']['state'])
 
         elif (request.method == 'POST'):
-            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential - errors in information')
+            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential', status='errors in information', session_status=session_data['session']['state'])
 
         else :
-            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
+            return render_template('ask_neo4j_password.html', title='Ask Neo4J credential', status='ok', session_status=session_data['session']['state'])
 
     elif is_wait_for_password(app.config['INSTANCE_CONFIG']): #is_wait_for_password
         if ( (len(request.values) != 0) and ('password' in request.values) and (request.values['password'] != "") ):
@@ -1237,24 +1237,24 @@ def route_upload_file_get():
 
                 if neo4j_connection(app.config['INSTANCE_CONFIG']):
                     if install_config(app.config['INSTANCE_CONFIG']):
-                        return render_template('simple_uploader.html', title='Upload file - database connected')
+                        return render_template('simple_uploader.html', title='Upload file', status='database connected', session_status=session_data['session']['state'])
                     else :
-                        return render_template('simple_uploader.html', title='Upload file - database configuration failed')
+                        return render_template('simple_uploader.html', title='Upload file', status='database configuration failed', session_status=session_data['session']['state'])
 
                 else :
-                    return render_template('simple_uploader.html', title='Upload file - connection failed')
+                    return render_template('simple_uploader.html', title='Upload file', status='connection failed', session_status=session_data['session']['state'])
 
             else :
-                return render_template('ask_neo4j_password.html', title='Ask Neo4J credential')
+                return render_template('ask_neo4j_password.html', title='Ask Neo4J credential', status='ok', session_status=session_data['session']['state'])
 
         elif (request.method == 'POST'):
-            return render_template('ask_password.html', title='Ask password - empty password not allowed')
+            return render_template('ask_password.html', title='Ask password', status='empty password not allowed', session_status=session_data['session']['state'])
 
         else :
-            return render_template('ask_password.html', title='Ask password')
+            return render_template('ask_password.html', title='Ask password', status='ok', session_status=session_data['session']['state'])
 
     else : #strange case
-        return render_template('ask_password.html', title='Ask password - should not happen')
+        return render_template('ask_password.html', title='Ask password', status='should not happen', session_status=session_data['session']['state'])
 
 #this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":

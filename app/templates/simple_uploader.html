@@ -1,8 +1,9 @@
-<!doctype html>
-<title>{{title}}</title>
-<h1>{{title}}</h1>
+{% extends 'base.html' %}
+
+{% block content %}
 <form method=post enctype=multipart/form-data>
   <input type=file name=file \>
-  <input type=text name=token \>
+  <input type=text name=token placeholder="upload token" \>
   <input type=submit value=Upload \>
 </form>
+{% endblock %}
