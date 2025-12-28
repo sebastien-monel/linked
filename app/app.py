@@ -1067,6 +1067,9 @@ def route_authenticate_begin():
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
+    if session_data['token']['credential_data'] is None :
+        abort(401)
+
     cred_bytes = base64.b64decode(session_data['token']['credential_data'].encode('utf8'))
     cred_data = AttestedCredentialData.unpack_from(cred_bytes)[0]
 
@@ -1155,6 +1158,10 @@ def route_upload_token():
             break
 
     return jsonify(config_data)
+
+@app.route('/__my_login__', methods=['GET', 'POST'])
+def route_login():
+    return render_template('index.html', title="not used")
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
