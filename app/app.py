@@ -1161,7 +1161,11 @@ def route_upload_token():
 
 @app.route('/__my_login__', methods=['GET', 'POST'])
 def route_login():
-    return render_template('index.html', title="not used")
+    session_data = session_check(request)
+    if (session_data['ip']['status'] == 'banned'):
+        abort(404)
+
+    return render_template('index.html', title=session_data['session']['state'])
 
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
