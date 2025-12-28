@@ -1,6 +1,9 @@
 {% extends 'base.html' %}
 
 {% block javascript %}
+  <link rel="stylesheet" type="text/css" href="graph.css" />
+  <script type="application/javascript" src="d3.js"></script>
+
   <script type="text/javascript">
     async function register() {
       const mo = await import("/static/webauthn-json.browser-ponyfill.js");
@@ -65,4 +68,7 @@
     <p>Touch your authenticator device now...</p>
     <a href="/">Cancel</a>
   </div>
+
+  <div id="container"></div>
+  <script type="module" src="graph.js"></script>
 {% endblock %}
