@@ -10,8 +10,6 @@
         method: 'POST',
       });
       let json = await request.json();
-      //console.log(typeof mo);
-      //console.log(typeof mo.parseCreationOptionsFromJSON);
       let options = mo.parseCreationOptionsFromJSON(json);
       document.getElementById('initial').style.display = 'none';
       document.getElementById('started').style.display = 'block';
@@ -26,6 +24,7 @@
       let stat = result.ok ? 'successful' : 'unsuccessful';
       //alert('Registration ' + stat + ' More details in server log...');
       //window.location = '/';
+      window.location.reload();
     }
 
     async function authenticate() {
@@ -50,6 +49,7 @@
       let stat = result.ok ? 'successful' : 'unsuccessful';
       //alert('Authentication ' + stat + ' More details in server log...');
       //window.location = '/';
+      window.location.reload();
     }
 
     //window.start = start; /*authenticate || register*/
