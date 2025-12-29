@@ -56,10 +56,24 @@ WHERE ( elementId(n1) = $node_id
 RETURN 
     type(r) as rel_type, 
     elementId(n1) as source, 
-    elementId(n2) as target, 
+    type(r) as target, 
     type(r) as value, 
     coalesce(n1.name, "no name") as name_n1, 
     labels(n1) as label_n1, 
+    type(r) as name_n2, 
+    [type(r)] as label_n2 
+LIMIT 20
+UNION
+MATCH (n1)-[r]->(n2) 
+WHERE ( elementId(n1) = $node_id 
+   OR   elementId(n2) = $node_id ) 
+RETURN 
+    type(r) as rel_type, 
+    type(r) as source, 
+    elementId(n2) as target, 
+    type(r) as value, 
+    type(r) as name_n1, 
+    [type(r)] as label_n1, 
     coalesce(n2.name, "no name") as name_n2, 
     labels(n2) as label_n2 
 LIMIT 20
