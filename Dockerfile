@@ -4,6 +4,7 @@ FROM python:3.13-trixie
 RUN mkdir /config
 RUN mkdir /certs
 RUN mkdir /app
+RUN mkdir /npm
 RUN mkdir /uploaded_files
 
 RUN useradd -ms /bin/bash web
@@ -31,6 +32,7 @@ RUN echo "web ALL=(ALL) NOPASSWD:/scripts/chown_archive.sh" >> /etc/sudoers.d/ch
 #!!!!
 
 #Install certs
+COPY npm /npm
 COPY app /app
 COPY scripts /scripts
 
@@ -43,6 +45,9 @@ RUN chown -R root:web /uploaded_files
 
 RUN chmod -R 770 /config
 RUN chown -R root:web /config
+
+RUN chmod -R 750 /npm
+RUN chown -R root:web /npm
 
 RUN chmod -R 750 /app
 RUN chown -R root:web /app

@@ -1,4 +1,4 @@
-import {forceSimulation, forceCollide, forceX} from "https://cdn.jsdelivr.net/npm/d3-force@3/+esm";
+import {forceSimulation, forceCollide, forceX} from "/npm/d3-force@3.0.1/+esm";
 
 const params = new URLSearchParams(document.location.search);
 

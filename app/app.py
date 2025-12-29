@@ -41,6 +41,7 @@ app = Flask(__name__, static_url_path="/static/", static_folder="/app/static/")
 app.secret_key = os.urandom(32)  # Used for session.
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['NPM_FOLDER'] = '/npm'
 app.config['FIDO2_SERVER'] = None
 app.config['INSTANCE_NUMBER'] = os.urandom(32).hex()
 app.config['INSTANCE_CONFIG'] = None
@@ -981,6 +982,14 @@ def route_download_file(uuid):
 
     file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
     return send_from_directory(app.config["UPLOAD_FOLDER"], str(uuid), as_attachment=True, download_name=file_name)
+
+@app.route('/npm/<string:lib>/+esm', methods = ['GET'])
+def route_download_npm_lib(lib):
+    session_data = session_check(request)
+    if (session_data['session']['state'] != 'valid'):
+        abort(404)
+
+    return send_from_directory(app.config["NPM_FOLDER"], str(lib), mimetype="text/javascript")
 
 @app.route('/<string:hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
