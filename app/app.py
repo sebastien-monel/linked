@@ -21,6 +21,7 @@ import sys
 import json
 import math
 import ssl
+#from ssl import Purpose
 from uuid import uuid4
 import hashlib
 import base64
@@ -78,6 +79,11 @@ RETURN
     coalesce(n2.name, "no name") as name_n2, 
     labels(n2) as label_n2 
 LIMIT 20
+"""
+
+query_url = """
+MATCH (n:link|web_page)
+RETURN n.url as url, n.name as name
 """
 
 query_full_backup_first_file = """
@@ -138,14 +144,19 @@ MATCH (f:file {file_uuid: $file_uuid})-[:in]->(:linked_instance)-[:in]->(:machin
 CREATE (f)-[:same_as]->(f_identique)
 """
 
+query_get_location = """
+MATCH (loc:location {name: $location})<-[:in]-(content:file|location) 
+RETURN content
+"""
+
 query_get_file = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (lt:log_type {name:'access file'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
-RETURN f.file as file 
+RETURN f.name as file 
 ORDER BY f.creation_date DESC 
-LIMIT 2
+LIMIT 1
 """
 
 query_get_file_type = """
@@ -153,7 +164,7 @@ MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_i
 MERGE (lt:log_type {name:'access file type'}) 
 ON CREATE SET lt.creation_date= datetime() 
 CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
-RETURN f.file as file, ft.name as file_type, ft.ext as type_ext, ft.precision as type_precision 
+RETURN f.name as file, ft.name as file_type, ft.ext as type_ext, ft.precision as type_precision 
 ORDER BY f.creation_date DESC 
 LIMIT 2
 """
@@ -162,12 +173,12 @@ query_get_file_infos = """
 MATCH (ft:file_type)<-[:is]-(f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MATCH (su:system_user)<-[:owner]-(f)-[:mode]->(m:mode) 
 MATCH (proj:location)<-[:from]-(f)-[:in]->(loc:location) 
-RETURN f.file as file_name, 
+RETURN f.name as file_name, 
     ft.name as file_type, 
     ft.ext as type_ext, 
     ft.precision as type_precision, 
-    loc.location as location, 
-    proj.location as proj, 
+    loc.name as location, 
+    proj.name as proj, 
     m.numeric as mode, 
     su.name as user 
 ORDER BY f.creation_date DESC 
@@ -178,7 +189,7 @@ query_banned_ip = """
 MERGE (dns:machine {dns:$dns}) 
 ON CREATE SET 
     dns.creation_date = datetime() 
-MERGE (ip:ip {name: $ip, status:"banned"}) 
+MERGE (ip:ip {name: $ip}) 
 ON CREATE SET 
     ip.creation_date = datetime(), 
     ip.status = "banned" 
@@ -195,7 +206,7 @@ MERGE (ft)<-[:is]-(f)
 
 query_post_file_location = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
-MERGE (loc:location {location: $location}) 
+MERGE (loc:location {name: $location}) 
 ON CREATE SET loc.creation_date= datetime() 
 MERGE (loc)<-[:in]-(f)
 """
@@ -315,9 +326,9 @@ RETURN
 
 query_post_file_infos = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
-MERGE (loc:location {location: $location}) 
+MERGE (loc:location {name: $location}) 
 ON CREATE SET loc.creation_date= datetime() 
-MERGE (pwd:location {location: $pwd}) 
+MERGE (pwd:location {name: $pwd}) 
 ON CREATE SET pwd.creation_date= datetime() 
 MERGE (machine:machine {name: $machine}) 
 ON CREATE SET machine.creation_date= datetime() 
@@ -532,19 +543,33 @@ def upload_file(request):
     return data
 
 def neo4j_get_file(config, file_uuid):
-    results = app.config['NEO4J_DRIVER'].execute_query(
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(
         query_get_file,
         name= os.environ['INSTANCE_DNS'],
         instance_number= app.config['INSTANCE_NUMBER'],
         file_uuid= file_uuid
     )
 
-    for result in results.records:
-        data = result.data()
-        break #TO_REVIEW
+    data = ""
+    app.logger.info("summary : %s - %s ms", summary.counters.nodes_created, summary.result_available_after)
+    for result in records:
+        row = result.data()
+        app.logger.info("%s" % (row))
+        data = "%s" % (row['file'])
+    return data
 
-    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    return data['file']
+def get_urls():
+    data = []
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(
+        query_url,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER']
+    )
+
+    for result in records:
+        data.append([result['url'], result['name']])
+
+    return data
 
 def install_config(config):
     query = ""
@@ -564,6 +589,9 @@ def install_config(config):
 def ssl_sni_check(ssl_socket, sni_name, ssl_ctx):
     if (sni_name != os.environ['INSTANCE_DNS']):
         app.logger.warning("... ssl_sni_check to %s from %s ..." % (sni_name, ssl_socket.getpeername() ))
+        app.logger.info("    SSLContext compression : %s" % (ssl_socket.compression()))
+        app.logger.info("    SSL Socket ALPN : %s" % ( ssl_socket.selected_alpn_protocol()))
+        app.logger.info("    SSL Stats %s" % (context.session_stats()))
 
         if (app.config['NEO4J_DRIVER'] is None ):
             app.logger.warning(" !!! not logged in database !!! ")
@@ -580,10 +608,14 @@ def ssl_sni_check(ssl_socket, sni_name, ssl_ctx):
             to_dns= sni_name
         )
 
-        return ssl.ALERT_DESCRIPTION_HANDSHAKE_FAILURE
+        return ssl.ALERT_DESCRIPTION_UNRECOGNIZED_NAME
+        #return ssl.ALERT_DESCRIPTION_HANDSHAKE_FAILURE
         #return ssl.ALERT_DESCRIPTION_INTERNAL_ERROR
 
     app.logger.info("... ssl_sni_check to %s from %s ..." % (sni_name, ssl_socket.getpeername() ))
+    app.logger.info("    SSLContext compression : %s" % (ssl_socket.compression()))
+    app.logger.info("    SSL Socket ALPN : %s" % ( ssl_socket.selected_alpn_protocol()))
+    app.logger.info("    SSL Stats %s" % (context.session_stats()))
     return None
 
 def session_check(request):
@@ -974,6 +1006,38 @@ def route_execute_query(uuid):
     abort(404)
     return jsonify(data)
 
+@app.route('/filesystem/<path:location>', methods = ['GET'])
+def route_download_location(location):
+    session_data = session_check(request)
+    if session_data['ip']['status'] != 'ok':
+        abort(404)
+
+    data = {}
+
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(
+        query_get_location,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER'],
+        location= location
+    )
+
+    #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+    for result in records:
+        app.logger.info("result : %s" % (result))
+        row = result.data()
+        app.logger.info("result.data() : %s" % (result.data()))
+
+        if 'file_uuid' in row['content'] :
+            url = "https://%s/%s" % (os.environ['INSTANCE_DNS'], row['content']['file_uuid'])
+        else :
+            url = "https://%s/filesystem/%s" % (os.environ['INSTANCE_DNS'], row['content']['name'])
+
+        if row['content']['name'] not in data :
+            data[ row['content']['name'] ] = {}
+        data[ row['content']['name'] ][ row['content']['creation_date'].iso_format() ] = url
+
+    return jsonify(data)
+
 @app.route('/<uuid:uuid>', methods = ['GET'])
 def route_download_file(uuid):
     session_data = session_check(request)
@@ -981,6 +1045,7 @@ def route_download_file(uuid):
         abort(404)
 
     file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
+    app.logger.info("file_name : %s" % (file_name))
     return send_from_directory(app.config["UPLOAD_FOLDER"], str(uuid), as_attachment=True, download_name=file_name)
 
 @app.route('/npm/<string:lib>/+esm', methods = ['GET'])
@@ -1268,6 +1333,7 @@ def route_upload_file_get():
     session_data = session_check(request)
     logging_session_data(session_data)
     if (session_data['ip']['status'] == 'banned'):
+        app.logger.info("ip status : banned")
         abort(404)
 
     if is_ready(app.config['INSTANCE_CONFIG']) : #is_ready
@@ -1299,7 +1365,7 @@ def route_upload_file_get():
                 return render_template('simple_uploader.html', title='Upload file', status='errors in information', session_status=session_data['session']['state'])
 
         else :
-            return render_template('simple_uploader.html', title='Upload file', status='ok', session_status=session_data['session']['state'])
+            return render_template('uploader.html', title='Home', status='ok', session_status=session_data['session']['state'], urls=get_urls())
 
     elif is_wait_for_neo4j_credential(app.config['INSTANCE_CONFIG']): #is_wait_for_neo4j_credential
         if verify_post_neo4j_credential(request): #verify_post_neo4j_credential
@@ -1310,7 +1376,8 @@ def route_upload_file_get():
 
             if neo4j_connection(app.config['INSTANCE_CONFIG']):
                 if install_config(app.config['INSTANCE_CONFIG']):
-                    return render_template('simple_uploader.html', title='Upload file', status='database connected', session_status=session_data['session']['state'])
+                    #return render_template('simple_uploader.html', title='Upload file', status='database connected', session_status=session_data['session']['state'])
+                    return render_template('uploader.html', title='Home', status='database connected', session_status=session_data['session']['state'], urls=get_urls())
                 else :
                     return render_template('simple_uploader.html', title='Upload file', status='database configuration failed', session_status=session_data['session']['state'])
             else :
@@ -1333,7 +1400,8 @@ def route_upload_file_get():
 
                 if neo4j_connection(app.config['INSTANCE_CONFIG']):
                     if install_config(app.config['INSTANCE_CONFIG']):
-                        return render_template('simple_uploader.html', title='Upload file', status='database connected', session_status=session_data['session']['state'])
+                        #return render_template('simple_uploader.html', title='Upload file', status='database connected', session_status=session_data['session']['state'])
+                        return render_template('uploader.html', title='Home', status='database connected', session_status=session_data['session']['state'], urls=get_urls())
                     else :
                         return render_template('simple_uploader.html', title='Upload file', status='database configuration failed', session_status=session_data['session']['state'])
 
@@ -1384,8 +1452,17 @@ if __name__ == "__main__":
         app.logger.info("logs : %s", logs)
 
     try:
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        #context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         context.load_cert_chain("/certs/fullchain.pem", "/certs/privkey.pem")
+        app.logger.info("SSLContext get_ciphers : %s" % (context.get_ciphers()))
+        app.logger.info("SSLContext tls_1.3 : %s" % (ssl.TLSVersion.TLSv1_3))
+        app.logger.info("SSLContext tls_1.2 : %s" % (ssl.TLSVersion.TLSv1_2))
+        app.logger.info("SSLContext maximum_version : %s" % (context.maximum_version))
+        app.logger.info("SSLContext minimum_version : %s" % (context.minimum_version))
+        context.minimum_version = ssl.TLSVersion.TLSv1_3
+        app.logger.info("    ... SSLContext minimum_version : %s" % (context.minimum_version))
+        app.logger.info("    ... SSLContext get_ciphers : %s" % (context.get_ciphers()))
         context.sni_callback = ssl_sni_check
 
     except FileNotFoundError:
