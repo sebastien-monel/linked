@@ -221,6 +221,7 @@ MERGE (ip:ip {name: $ip})
 ON CREATE SET ip.creation_date= datetime() 
 CREATE (ip)<-[:from]-(log:log {creation_date: datetime(), data: $data})-[:is]->(lt) 
 CREATE (li)<-[:log]-(log)-[:from]->(hook)
+RETURN hook.logger as logger
 """
 
 query_upload_token = """
@@ -1076,7 +1077,7 @@ def route_hooks(hook_name):
     #for value in request.values:
     #    data[value] = request.values[value]
     app.logger.info("hook : %s - %s", hook_name, ", ".join(request.values))
-    results = app.config['NEO4J_DRIVER'].execute_query(
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(
         query_hooks,
         name= os.environ['INSTANCE_DNS'],
         instance_number= app.config['INSTANCE_NUMBER'],
@@ -1084,8 +1085,17 @@ def route_hooks(hook_name):
         ip= request.remote_addr,
         #data= ", ".join(request.values)
         data=received_data
-    ).summary
-    app.logger.info("json data : %s" % ( json.dumps(request.json, sort_keys=True, indent=4) ))
+    )
+
+    app.logger.info("summary : %s ms", summary.result_available_after)
+
+    log = "no"
+    for record in records:
+        log = record['logger']
+
+    if log == 'ok' :
+        app.logger.info("json data : %s" % ( json.dumps(request.json, sort_keys=True, indent=4) ))
+
     return jsonify(data)
 
 @app.route("/api/session_data", methods=["GET", "POST"])
