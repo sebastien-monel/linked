@@ -284,12 +284,9 @@ SET
     ck.session_state= 'valid'
 """
 
-query_session_check = """
+query_set_cookie = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
-OPTIONAL MATCH (t:token) 
-OPTIONAL MATCH (p:personne) 
-MERGE (ip:ip {name: $ip}) 
-ON CREATE SET ip.creation_date= datetime() 
+MATCH (ip:ip {name: $ip})
 MERGE (ck:cookie {session_name: $session_name}) 
 ON CREATE SET 
     ck.creation_date= datetime(), 
@@ -298,7 +295,16 @@ ON CREATE SET
 ON MATCH SET ck.last_date= datetime() 
 MERGE (li)<-[:to]-(ck) 
 MERGE (ck)-[:from]->(ip) 
-WITH ip, ck, t, p, dns 
+"""
+
+query_session_check = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+OPTIONAL MATCH (t:token) 
+OPTIONAL MATCH (p:personne) 
+MERGE (ip:ip {name: $ip}) 
+ON CREATE SET ip.creation_date= datetime() 
+WITH ip, t, p, dns 
+OPTIONAL MATCH (li)<-[:to]-(ck:cookie {session_name: $session_name})-[:from]->(ip) 
 OPTIONAL MATCH (ip)<-[:for]-(ut:upload_token {token: $upload_token})-[:for]->(li_ut:linked_instance)-[:in]->(dns) 
 WITH ip, ck, t, p, dns, ut 
 OPTIONAL MATCH (ip)<-[:for]-(ut2:upload_token)
@@ -1118,6 +1124,16 @@ def route_register_begin():
     session_data['token']['user_verification'] = state['user_verification']
 
     results = app.config['NEO4J_DRIVER'].execute_query(
+        query_set_cookie,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER'],
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+        challenge= session_data['token']['challenge'],
+        user_verification= session_data['token']['user_verification']
+    )
+
+    results = app.config['NEO4J_DRIVER'].execute_query(
         query_token_register,
         dns= os.environ['INSTANCE_DNS'],
         instance_number= app.config['INSTANCE_NUMBER'],
@@ -1182,6 +1198,16 @@ def route_authenticate_begin():
 
     session_data['session']['challenge'] = state['challenge']
     session_data['session']['user_verification'] = state['user_verification']
+
+    results = app.config['NEO4J_DRIVER'].execute_query(
+        query_set_cookie,
+        dns= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER'],
+        ip= session_data['ip']['name'],
+        session_name= session_data['session']['name'],
+        challenge= session_data['session']['challenge'],
+        user_verification= session_data['session']['user_verification']
+    )
 
     results = app.config['NEO4J_DRIVER'].execute_query(
         query_token_auth,
