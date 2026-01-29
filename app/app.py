@@ -1079,6 +1079,7 @@ def route_hooks(hook_name):
         #data= ", ".join(request.values)
         data=received_data
     ).summary
+    app.logger.info("json data : %s" % (request.json))
     return jsonify(data)
 
 @app.route("/api/session_data", methods=["GET", "POST"])
