@@ -1059,8 +1059,8 @@ def route_download_npm_lib(lib):
 @app.route('/<string:hook_name>/hooks', methods=['GET', 'POST'])
 def route_hooks(hook_name):
     session_data = session_check(request)
-    #if session_data['ip']['status'] != 'ok':
-    #    abort(404)
+    if session_data['ip']['status'] == 'banned':
+        abort(404)
 
     data = {'hook_name': hook_name}
     received_data = "not a json"
@@ -1079,7 +1079,7 @@ def route_hooks(hook_name):
         #data= ", ".join(request.values)
         data=received_data
     ).summary
-    app.logger.info("json data : %s" % (request.json))
+    app.logger.info("json data : %s" % ( json.dumps(request.json, sort_keys=True, indent=4) ))
     return jsonify(data)
 
 @app.route("/api/session_data", methods=["GET", "POST"])
