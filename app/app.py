@@ -582,18 +582,28 @@ def get_urls():
     return data
 
 def install_config(config):
-    query = ""
-    with open("/app/cypher/file_types.cypher", 'rt') as f :
-        query = f.read()
+    for file in [
+        '/app/cypher/file_types.cypher',
+        '/app/cypher/modes.cypher',
+        '/app/cypher/purges_upload_token_relations.cypher',
+        '/app/cypher/purges_upload_token_nodes.cypher',
+        '/app/cypher/purges_cookie_relations.cypher',
+        '/app/cypher/purges_cookie_nodes.cypher',
+        '/app/cypher/purges_ip_relations.cypher',
+        '/app/cypher/purges_ip_nodes.cypher'
+        ]:
+        query = ""
+        with open(file, 'rt') as f :
+            query = f.read()
 
-    if (len(query) == 0):
-        return False
+        if (len(query) == 0):
+            return False
 
-    results = app.config['NEO4J_DRIVER'].execute_query(
-        query
-    ).summary
+        results = app.config['NEO4J_DRIVER'].execute_query(
+            query
+        ).summary
 
-    app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
+        app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
 
 def ssl_sni_check(ssl_socket, sni_name, ssl_ctx):
