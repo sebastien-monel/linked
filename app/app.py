@@ -84,6 +84,7 @@ LIMIT 20
 query_url = """
 MATCH (n:link|web_page)
 RETURN n.url as url, n.name as name
+ORDER BY n.creation_date DESC
 """
 
 query_full_backup_first_file = """
@@ -1063,7 +1064,7 @@ def route_download_npm_lib(lib):
 
     return send_from_directory(app.config["NPM_FOLDER"], str(lib), mimetype="text/javascript")
 
-@app.route('/<string:hook_name>/hooks', methods=['GET', 'POST'])
+@app.route('/hooks/<string:hook_name>', methods=['GET', 'POST'])
 def route_hooks(hook_name):
     session_data = session_check(request)
     if session_data['ip']['status'] == 'banned':
