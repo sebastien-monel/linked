@@ -45,6 +45,7 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['NPM_FOLDER'] = '/npm'
 app.config['FIDO2_SERVER'] = None
 app.config['INSTANCE_NUMBER'] = os.urandom(32).hex()
+app.config['INSTANCE_VERSION'] = os.environ['INSTANCE_VERSION']
 app.config['INSTANCE_CONFIG'] = None
 app.config['NEO4J_DRIVER'] = None
 app.logger.setLevel(logging.INFO)
@@ -117,7 +118,7 @@ LIMIT 1
 query_startup = """
 MERGE (dns:machine {dns:$name}) 
 ON CREATE SET dns.creation_date= datetime() 
-MERGE (li:linked_instance {instance_number:$instance_number})-[:in]->(dns) 
+MERGE (li:linked_instance {instance_number:$instance_number, instance_version:$instance_version})-[:in]->(dns) 
 ON CREATE SET li.creation_date= datetime() 
 MERGE (lt:log_type {name:'instance startup'}) 
 ON CREATE SET lt.creation_date= datetime() 
@@ -515,7 +516,8 @@ def neo4j_connection(config):
     results = app.config['NEO4J_DRIVER'].execute_query(
         query_startup,
         name= os.environ['INSTANCE_DNS'],
-        instance_number= app.config['INSTANCE_NUMBER']
+        instance_number= app.config['INSTANCE_NUMBER'],
+        instance_version= app.config['INSTANCE_VERSION']
     ).summary
     app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
     return True
