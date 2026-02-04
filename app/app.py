@@ -228,12 +228,10 @@ RETURN hook.logger as logger
 
 query_upload_token = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
-MATCH (ck:cookie {session_name: $session_name}) 
 MATCH (ip:ip {name: $ip}) 
 MERGE (t:upload_token {token: $upload_token}) 
 ON CREATE SET t.creation_date= datetime(), t.state = 'validation' 
 MERGE (li)<-[:for]-(t) 
-MERGE (ck)<-[:from]-(t) 
 MERGE (t)-[:for]->(ip) 
 RETURN t.token as token
 """
