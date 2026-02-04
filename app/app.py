@@ -335,7 +335,9 @@ RETURN
 """
 
 query_post_file_infos = """
-MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
+MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}), 
+(ft:file_type {name: $file_type}) 
+MERGE (ft)<-[:is]-(f)
 MERGE (loc:location {name: $location}) 
 ON CREATE SET loc.creation_date= datetime() 
 MERGE (pwd:location {name: $pwd}) 
@@ -945,50 +947,50 @@ def route_file_post_infos(uuid):
     session_data = session_check(request)
     if session_data['ip']['status'] != 'ok':
         abort(404)
+        
+    if (session_data['upload_token']['state'] != "verified"):
+        abort(404)
 
     data = {'uuid': uuid}
 
-    if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")):
-            results = app.config['NEO4J_DRIVER'].execute_query(
-                query_post_file_infos,
-                name= os.environ['INSTANCE_DNS'],
-                instance_number= app.config['INSTANCE_NUMBER'],
-                file_uuid= uuid,
-                owner= request.values['owner'],
-                mode= request.values['mode'],
-                user= request.values['user'],
-                pwd= request.values['pwd'],
-                size= request.values['size'],
-                location= request.values['location'],
-                machine= request.values['machine']
-            ).summary
+    if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")):
+        results = app.config['NEO4J_DRIVER'].execute_query(
+            query_post_file_infos,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= app.config['INSTANCE_NUMBER'],
+            file_uuid= uuid,
+            file_type= request.values['file_type'],
+            owner= request.values['owner'],
+            mode= request.values['mode'],
+            user= request.values['user'],
+            pwd= request.values['pwd'],
+            size= request.values['size'],
+            location= request.values['location'],
+            machine= request.values['machine']
+        ).summary
 
-            data['result_available_after'] = results.result_available_after
-            app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-
-        else :
-            results = app.config['NEO4J_DRIVER'].execute_query(
-                query_get_file_infos,
-                name= os.environ['INSTANCE_DNS'],
-                instance_number= app.config['INSTANCE_NUMBER'],
-                file_uuid= uuid
-            )
-
-            for result in results.records:
-                data_line = result.data()
-                data['file_name'] = data_line['file_name']
-                data['type_precision'] = data_line['type_precision']
-                data['type_ext'] = data_line['type_ext']
-                data['file_type'] = data_line['file_type']
-                data['location'] = data_line['location']
-                data['proj'] = data_line['proj']
-                data['mode'] = data_line['mode']
-                data['user'] = data_line['user']
-                break
+        data['result_available_after'] = results.result_available_after
+        app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
 
     else :
-        data["error"] = "no token"
+        results = app.config['NEO4J_DRIVER'].execute_query(
+            query_get_file_infos,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= app.config['INSTANCE_NUMBER'],
+            file_uuid= uuid
+        )
+
+        for result in results.records:
+            data_line = result.data()
+            data['file_name'] = data_line['file_name']
+            data['type_precision'] = data_line['type_precision']
+            data['type_ext'] = data_line['type_ext']
+            data['file_type'] = data_line['file_type']
+            data['location'] = data_line['location']
+            data['proj'] = data_line['proj']
+            data['mode'] = data_line['mode']
+            data['user'] = data_line['user']
+            break
 
     return jsonify(data)
 
