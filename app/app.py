@@ -816,31 +816,6 @@ def route_file_sha512(uuid):
     data['sha512'] = digest(uuid, "sha512")
     return jsonify(data)
 
-@app.route('/<uuid:uuid>/type', methods = ['POST'])
-def route_file_post_type(uuid):
-    session_data = session_check(request)
-    if session_data['ip']['status'] != 'ok':
-        abort(404)
-
-    data = {'uuid': uuid}
-
-    if ((len(request.values) != 0) and ('file_type' in request.values) and (request.values['file_type'] != "")
-        and ('token' in request.values) and (request.values['token'] == config['token'])):
-        results = app.config['NEO4J_DRIVER'].execute_query(
-            query_post_file_type,
-            name= os.environ['INSTANCE_DNS'],
-            instance_number= app.config['INSTANCE_NUMBER'],
-            file_uuid= uuid,
-            file_type= request.values['file_type']
-        ).summary
-
-        data['result_available_after'] = results.result_available_after
-        app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
-    else :
-        app.logger.info("No file_type")
-
-    return jsonify(data)
-
 @app.route('/<uuid:uuid>/type', methods = ['GET'])
 def route_file_get_type(uuid):
     session_data = session_check(request)
@@ -951,14 +926,14 @@ def route_file_post_infos(uuid):
     if (session_data['upload_token']['state'] != "verified"):
         abort(404)
 
-    data = {'uuid': uuid}
+    data = {'uuid': str(uuid)}
 
     if ((len(request.values) != 0) and ('location' in request.values) and (request.values['location'] != "")):
         results = app.config['NEO4J_DRIVER'].execute_query(
             query_post_file_infos,
             name= os.environ['INSTANCE_DNS'],
             instance_number= app.config['INSTANCE_NUMBER'],
-            file_uuid= uuid,
+            file_uuid= str(uuid),
             file_type= request.values['file_type'],
             owner= request.values['owner'],
             mode= request.values['mode'],
@@ -977,7 +952,7 @@ def route_file_post_infos(uuid):
             query_get_file_infos,
             name= os.environ['INSTANCE_DNS'],
             instance_number= app.config['INSTANCE_NUMBER'],
-            file_uuid= uuid
+            file_uuid= str(uuid)
         )
 
         for result in results.records:
