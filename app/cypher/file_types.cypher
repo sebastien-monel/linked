@@ -76,3 +76,13 @@ MERGE (t54:file_type {name:"json utf8"})
     ON MATCH SET t54.precision = 'high'
 MERGE (t54)-[:is]->(t5)
 MERGE (t54)-[:is]->(t44)
+
+MERGE (t55:file_type {name:"log utf8"})
+    ON CREATE SET t55.creation_date= datetime(), t55.precision = 'high'
+    ON MATCH SET t55.precision = 'high'
+MERGE (t55)-[:is]->(t5)
+
+MERGE (t56:file_type {name:"notes utf8"})
+    ON CREATE SET t56.creation_date= datetime(), t56.precision = 'high'
+    ON MATCH SET t56.precision = 'high'
+MERGE (t56)-[:is]->(t5)
