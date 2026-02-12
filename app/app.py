@@ -1310,8 +1310,8 @@ def route_graph_js():
 
     return Response(render_template('graph.js'), mimetype='text/javascript')
 
-@app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
-def route_data_json(node_id):
+@app.route('/events.json', methods=['GET', 'POST'])
+def route_events_json(node_id):
     session_data = session_check(request)
     if (session_data['ip']['status'] == 'banned'):
         app.logger.info("ip status : banned")
