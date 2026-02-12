@@ -1417,7 +1417,7 @@ def route_event_creation():
         else :
             start = datetime.strptime(request.values['start'], "%Y-%m-%dT%H:%M:%S%z") #to_review
 
-        return render_template('event_creation.js', 
+        return render_template('event_creation.html', 
                                 title='login', 
                                 status= 'ok',
                                 session_status=session_data['session']['state'],
