@@ -1357,7 +1357,7 @@ def route_login():
     return render_template('index.html', title='login', status= 'ok',session_status=session_data['session']['state'])
 
 @app.route('/calendar', methods=['GET', 'POST'])
-def route_login():
+def route_calendar():
     session_data = session_check(request)
     if (session_data['ip']['status'] == 'banned'):
         abort(404)
@@ -1365,7 +1365,7 @@ def route_login():
     return render_template('calendar.html', title='login', status= 'ok',session_status=session_data['session']['state'])
 
 @app.route('/fullcal_controler.js', methods=['GET', 'POST'])
-def route_login():
+def route_calendar_controller():
     session_data = session_check(request)
     if (session_data['ip']['status'] == 'banned'):
         abort(404)
