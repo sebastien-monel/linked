@@ -31,6 +31,8 @@ import requests
 import string
 import random
 
+from datetime import datetime, date, timezone
+
 #Errors :
 from cryptography.exceptions import InvalidKey
 from json.decoder import JSONDecodeError
@@ -1306,6 +1308,36 @@ def route_graph_js():
         abort(404)
 
     return Response(render_template('graph.js'), mimetype='text/javascript')
+
+@app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
+def route_data_json(node_id):
+    session_data = session_check(request)
+    if (session_data['ip']['status'] == 'banned'):
+        app.logger.info("ip status : banned")
+        abort(404)
+
+    #if (session_data['session']['state'] != 'valid'):        
+        #abort(404)
+    
+    events = []
+    if ((len(request.values) != 0) and ('start' in request.values) and (len(request.values['start']) > 0)):
+        debut = request.values['start']
+        fin = request.values['end']
+        p_debut = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%S%z")
+        p_fin = datetime.strptime(fin, "%Y-%m-%dT%H:%M:%S%z")
+        
+        events.append({
+            'title': '... test ...',
+            'color': 'blue',
+            'id': 1,
+            'start': p_debut.strftime("%Y-%m-%d"),
+            'end': p_fin.strftime("%Y-%m-%d")
+            })
+        
+    else :
+        abort (404)
+        
+    return jsonify(events)
 
 @app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
 def route_data_json(node_id):
