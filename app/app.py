@@ -1405,6 +1405,28 @@ def route_calendar_controller():
 
     return render_template('fullcal_controler.js', title='login', status= 'ok',session_status=session_data['session']['state'])
 
+@app.route('/event_creation', methods=['GET', 'POST'])
+def route_event_creation():
+    session_data = session_check(request)
+    if (session_data['ip']['status'] == 'banned'):
+        abort(404)
+
+    if ((len(request.values) != 0) and ('type' in request.values) and (len(request.values['type']) > 0)):
+        if(len(request.values['start']) == 10):
+            start = pytz.timezone('Europe/Paris').localize(datetime.strptime(request.values['start'], "%Y-%m-%d")) #to_review
+        else :
+            start = datetime.strptime(request.values['start'], "%Y-%m-%dT%H:%M:%S%z") #to_review
+
+        return render_template('fullcal_controler.js', 
+                                title='login', 
+                                status= 'ok',
+                                session_status=session_data['session']['state'],
+                                begin= start.strftime("%Y-%m-%dT%H:%M"), #to_review
+                                duration= ""
+                              )
+    
+    return render_template('event_creation.html', title='login', status= 'ok',session_status=session_data['session']['state'])
+
 @app.route('/', methods=['GET', 'POST'])
 def route_upload_file_get():
     session_data = session_check(request)
