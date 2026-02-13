@@ -88,6 +88,11 @@ RETURN
 LIMIT 20
 """
 
+query_projet = """
+MATCH (p:projet) 
+RETURN p.name as title
+"""
+
 query_url = """
 MATCH (n:link|web_page)
 RETURN n.url as url, n.name as name
@@ -1327,14 +1332,19 @@ def route_events_json():
         fin = request.values['end']
         p_debut = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%S%z")
         p_fin = datetime.strptime(fin, "%Y-%m-%dT%H:%M:%S%z")
-        
-        events.append({
-            'title': '... test ...',
-            'color': 'blue',
-            'id': 1,
-            'start': p_debut.strftime("%Y-%m-%d"),
-            'end': p_fin.strftime("%Y-%m-%d")
-            })
+
+        config_data = {}
+        records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_projet, parameters_= config_data)
+        app.logger.info("summary : %s ms", summary.result_available_after)
+
+        for record in records:
+            events.append({
+                'title': record['title'],
+                'color': 'blue',
+                'id': 1,
+                'start': p_debut.strftime("%Y-%m-%d"),
+                'end': p_fin.strftime("%Y-%m-%d")
+                })
         
     else :
         abort (404)
