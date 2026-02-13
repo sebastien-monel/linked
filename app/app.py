@@ -591,6 +591,7 @@ def install_config(config):
     for file in [
         '/app/cypher/file_types.cypher',
         '/app/cypher/modes.cypher',
+        '/app/cypher/besoins.cypher',
         '/app/cypher/purges_upload_token_relations.cypher',
         '/app/cypher/purges_upload_token_nodes.cypher',
         '/app/cypher/purges_cookie_relations.cypher',
