@@ -32,7 +32,7 @@ import string
 import random
 
 import pytz
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 
 #Errors :
 from cryptography.exceptions import InvalidKey
@@ -1332,6 +1332,25 @@ def route_events_json():
         fin = request.values['end']
         p_debut = datetime.strptime(debut, "%Y-%m-%dT%H:%M:%S%z")
         p_fin = datetime.strptime(fin, "%Y-%m-%dT%H:%M:%S%z")
+        duration = p_fin - p_debut
+        
+        calendar_type = ""
+        if duration > timedelta(days=30 * 2):
+            calendar_type = "year"
+        elif duration > timedelta(days=7 * 2):
+            calendar_type = "month"
+        elif duration > timedelta(days=1 * 2):
+            calendar_type = "week"
+        else:
+            calendar_type = "day"
+            
+        events.append({
+            'title': calendar_type,
+            'color': 'yellow',
+            'id': 1,
+            'start': p_debut.strftime("%Y-%m-%d"),
+            'end': p_fin.strftime("%Y-%m-%d")
+            })
 
         config_data = {}
         records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_projet, parameters_= config_data)
