@@ -158,9 +158,6 @@ RETURN content
 
 query_get_file = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
-MERGE (lt:log_type {name:'access file'}) 
-ON CREATE SET lt.creation_date= datetime() 
-CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
 RETURN f.name as file 
 ORDER BY f.creation_date DESC 
 LIMIT 1
