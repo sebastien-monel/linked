@@ -1020,7 +1020,7 @@ def route_download_location(location):
         query_get_location,
         name= os.environ['INSTANCE_DNS'],
         instance_number= app.config['INSTANCE_NUMBER'],
-        location= location
+        location= "/%s" % (location)
     )
 
     #app.logger.info("summary : %s - %s ms", results.counters.nodes_created, results.result_available_after)
