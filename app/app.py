@@ -141,7 +141,7 @@ ON CREATE SET li.creation_date= datetime()
 MERGE (f:file {file_uuid: $file_uuid})-[:in]->(li) 
 ON CREATE SET 
     f.creation_date= datetime(), 
-    f.file= $file, 
+    f.name= $file, 
     f.sha256 = $sha256 
 """
 
