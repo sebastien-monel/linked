@@ -131,9 +131,6 @@ MERGE (dns:machine {dns:$name})
 ON CREATE SET dns.creation_date= datetime() 
 MERGE (li:linked_instance {instance_number:$instance_number, instance_version:$instance_version})-[:in]->(dns) 
 ON CREATE SET li.creation_date= datetime() 
-MERGE (lt:log_type {name:'instance startup'}) 
-ON CREATE SET lt.creation_date= datetime() 
-CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(li) 
 """
 
 query_put_file = """
@@ -146,9 +143,6 @@ ON CREATE SET
     f.creation_date= datetime(), 
     f.file= $file, 
     f.sha256 = $sha256 
-MERGE (lt:log_type {name:'log file'}) 
-ON CREATE SET lt.creation_date= datetime() 
-CREATE (lt)<-[:is]-(l:log {creation_date:datetime()})-[:log]->(f) 
 """
 
 query_same_file = """
@@ -350,7 +344,7 @@ MERGE (loc:location {name: $location})
 ON CREATE SET loc.creation_date= datetime() 
 MERGE (pwd:location {name: $pwd}) 
 ON CREATE SET pwd.creation_date= datetime() 
-MERGE (machine:machine {name: $machine}) 
+MERGE (machine:machine {dns: $machine}) 
 ON CREATE SET machine.creation_date= datetime() 
 MERGE (user:system_user {name: $user, machine: $machine}) 
 ON CREATE SET user.creation_date= datetime() 
