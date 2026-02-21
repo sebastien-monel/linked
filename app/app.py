@@ -158,6 +158,9 @@ RETURN content
 
 query_get_file = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
+MERGE (ip:ip {name: $ip}) 
+ON CREATE SET ip.creation_date= datetime() 
+MERGE (ip)-[:get]->(f)
 RETURN f.name as file 
 ORDER BY f.creation_date DESC 
 LIMIT 1
@@ -554,12 +557,13 @@ def upload_file(request):
 
     return data
 
-def neo4j_get_file(config, file_uuid):
+def neo4j_get_file(config, request, file_uuid):
     records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(
         query_get_file,
         name= os.environ['INSTANCE_DNS'],
         instance_number= app.config['INSTANCE_NUMBER'],
-        file_uuid= file_uuid
+        file_uuid= file_uuid,
+        ip= request.remote_addr,
     )
 
     data = ""
@@ -977,7 +981,7 @@ def route_execute_query(uuid):
 
     data = {}
     if ((len(request.values) != 0) and ('token' in request.values) and (request.values['token'] == config['token'])):
-        file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
+        file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], request, str(uuid))
 
         query = ""
         with open(app.config["UPLOAD_FOLDER"] + '/' + str(uuid), 'rt') as f :
@@ -1042,7 +1046,7 @@ def route_download_file(uuid):
     if session_data['ip']['status'] != 'ok':
         abort(404)
 
-    file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], str(uuid))
+    file_name = neo4j_get_file(app.config['INSTANCE_CONFIG'], request, str(uuid))
     app.logger.info("file_name : %s" % (file_name))
     return send_from_directory(app.config["UPLOAD_FOLDER"], str(uuid), as_attachment=True, download_name=file_name)
 
