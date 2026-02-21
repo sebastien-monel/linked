@@ -1032,7 +1032,7 @@ def route_download_location(location):
         if 'file_uuid' in row['content'] :
             url = "https://%s/%s" % (os.environ['INSTANCE_DNS'], row['content']['file_uuid'])
         else :
-            url = "https://%s/filesystem/%s" % (os.environ['INSTANCE_DNS'], row['content']['name'])
+            url = "https://%s/filesystem%s" % (os.environ['INSTANCE_DNS'], row['content']['name'])
 
         if row['content']['name'] not in data :
             data[ row['content']['name'] ] = {}
