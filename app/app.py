@@ -160,7 +160,7 @@ query_get_file = """
 MATCH (f:file {file_uuid: $file_uuid})-[:in]->(li:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 MERGE (ip:ip {name: $ip}) 
 ON CREATE SET ip.creation_date= datetime() 
-MERGE (ip)-[:get]->(f)
+CREATE (ip)-[:get {access_date: datetime()}]->(f)
 RETURN f.name as file 
 ORDER BY f.creation_date DESC 
 LIMIT 1
