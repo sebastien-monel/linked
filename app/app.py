@@ -1380,6 +1380,14 @@ def route_events_json():
         
     return jsonify(events)
 
+@app.route('/notifications.json', methods=['GET', 'POST'])
+def route_notifications_json(node_id):
+    session_data = session_check(request)
+    if (session_data['ip']['status'] == 'banned'):
+        abort(404)
+
+    return jsonify({body: "Hi there !!!", tag : "1"})
+
 @app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
 def route_data_json(node_id):
     session_data = session_check(request)
