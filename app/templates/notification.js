@@ -9,6 +9,6 @@ Notification.requestPermission().then((status) => {
   if (status === "granted") {
     const interval = setInterval(() => {
       const notification = new Notification("Brouillon :", {body: "Hi there !!!", tag : "1"} );
-    }, 10000)
+    }, 1000)
   }
 })
