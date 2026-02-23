@@ -38,8 +38,8 @@ from datetime import datetime, date, timezone, timedelta
 from cryptography.exceptions import InvalidKey
 from json.decoder import JSONDecodeError
 
-from netfilter.rule import Rule,Match
-from netfilter.table import Table
+#from netfilter.rule import Rule,Match
+#from netfilter.table import Table
 
 UPLOAD_FOLDER = '/uploaded_files'
 #ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'py', 'exe', 'ipynb', 'zip', 'tar', 'sh', ''}
@@ -1578,13 +1578,13 @@ if __name__ == "__main__":
     finally:
         app.logger.info("logs : %s", logs)
         
-    rule = Rule(
-        in_interface='eth0',
-        protocol='tcp',
-        matches=[Match('tcp', '--dport 80')],
-        jump='ACCEPT')
+    #rule = Rule(
+    #    in_interface='eth0',
+    #    protocol='tcp',
+    #    matches=[Match('tcp', '--dport 80')],
+    #    jump='ACCEPT')
     
-    table = Table('filter')
+    #table = Table('filter')
     #table.append_rule('INPUT', rule)
     #table.delete_rule('INPUT', rule)
     
