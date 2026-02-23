@@ -8,8 +8,16 @@ Notification.requestPermission().then((status) => {
   
   if (status === "granted") {
     const interval = setInterval(() => {
-      const notifications = import( "/notifications.json", { with: { type: "json" } } );
-      const notification = new Notification("Brouillon :", {body: "Hi there !!!", tag : "1"} );
+      const notifications_json = import( "/notifications.json", { with: { type: "json" } } );
+      const notifications_tab = [] ;
+      
+      notifications_json.forEach((item, index) => {
+          notifications_tab.push( new Notification("Brouillon :", {
+            body: notifications_json[index]['body'], 
+            tag : notifications_json[index]['tag']} 
+          ))
+      })
+      
     }, 1000)
   }
 })
