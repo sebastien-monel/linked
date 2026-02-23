@@ -1314,6 +1314,14 @@ def route_graph_js():
 
     return Response(render_template('graph.js'), mimetype='text/javascript')
 
+@app.route('/notification.js', methods=['GET', 'POST'])
+def route_notification_js():
+    session_data = session_check(request)
+    if (session_data['session']['state'] != 'valid'):
+        abort(404)
+
+    return Response(render_template('notification.js'), mimetype='text/javascript')
+
 @app.route('/events.json', methods=['GET', 'POST'])
 def route_events_json():
     session_data = session_check(request)
