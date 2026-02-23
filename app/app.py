@@ -1585,7 +1585,7 @@ if __name__ == "__main__":
         jump='ACCEPT')
     
     table = Table('filter')
-    table.append_rule('INPUT', rule)
+    #table.append_rule('INPUT', rule)
     #table.delete_rule('INPUT', rule)
     
     try:
