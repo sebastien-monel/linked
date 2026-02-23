@@ -1582,7 +1582,7 @@ if __name__ == "__main__":
         in_interface='eth0',
         protocol='tcp',
         matches=[Match('tcp', '--dport 80')],
-        jump='ACCEPT')))
+        jump='ACCEPT')
     
     table = Table('filter')
     table.append_rule('INPUT', rule)
