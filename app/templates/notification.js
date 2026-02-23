@@ -8,7 +8,7 @@ Notification.requestPermission().then((status) => {
   
   if (status === "granted") {
     const interval = setInterval(() => {
-      const data = import( "/notifications.json", { with: { type: "json" } } );
+      const notifications = import( "/notifications.json", { with: { type: "json" } } );
       const notification = new Notification("Brouillon :", {body: "Hi there !!!", tag : "1"} );
     }, 1000)
   }
