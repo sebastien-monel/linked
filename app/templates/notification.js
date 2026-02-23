@@ -11,6 +11,7 @@ Notification.requestPermission().then((status) => {
       const notifications_json = import( "/notifications.json", { with: { type: "json" } } );
       const notifications_tab = [] ;
       
+      console.log(typeof notifications_json); 
       notifications_json.forEach((item, index) => {
           notifications_tab.push( new Notification("Brouillon :", {
             body: notifications_json[index]['body'], 
