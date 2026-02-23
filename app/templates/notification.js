@@ -18,8 +18,7 @@ Notification.requestPermission().then((status) => {
             body: notification['body'], 
             tag : notification['tag']} 
           ))
-      })
-      
+      }
     }, 1000)
   }
 })
