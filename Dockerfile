@@ -13,7 +13,7 @@ RUN useradd -ms /bin/bash web
 COPY requirements.txt /
 RUN apt-get update
 #RUN apt-get install -y acl
-RUN apt-get install -y sudo net-tools
+RUN apt-get install -y sudo net-tools iptables 
 RUN pip install -r /requirements.txt
 RUN rm /requirements.txt
 
