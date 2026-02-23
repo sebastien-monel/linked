@@ -13,7 +13,7 @@ Notification.requestPermission().then((status) => {
       
       console.log(typeof notifications_json); 
       //notifications_json.forEach((item, index) => {
-      for (const notification in notifications_json) {
+      for (const notification of notifications_json) {
           notifications_tab.push( new Notification("Brouillon :", {
             body: notification['body'], 
             tag : notification['tag']} 
