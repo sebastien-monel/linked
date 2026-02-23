@@ -1317,8 +1317,12 @@ def route_graph_js():
 @app.route('/notification.js', methods=['GET', 'POST'])
 def route_notification_js():
     session_data = session_check(request)
-    if (session_data['session']['state'] != 'valid'):
+    if (session_data['ip']['status'] == 'banned'):
+        app.logger.info("ip status : banned")
         abort(404)
+
+    #if (session_data['session']['state'] != 'valid'):
+    #    abort(404)
 
     return Response(render_template('notification.js'), mimetype='text/javascript')
 
