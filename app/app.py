@@ -1386,7 +1386,7 @@ def route_notifications_json():
     if (session_data['ip']['status'] == 'banned'):
         abort(404)
 
-    return jsonify({body: "Hi there !!!", tag : "1"})
+    return jsonify({"body": "Hi there !!!", "tag" : "1"})
 
 @app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
 def route_data_json(node_id):
