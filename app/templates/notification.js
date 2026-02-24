@@ -1,4 +1,4 @@
-async notification_check() {
+async function notification_check() {
   const response = await fetch("/notifications.json");
   
   if (!response.ok) {
