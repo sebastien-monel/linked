@@ -1,4 +1,4 @@
-async notificaiton_check() {
+async notification_check() {
   const response = await fetch("/notifications.json");
   
   if (!response.ok) {
@@ -34,7 +34,7 @@ Notification.requestPermission().then((status) => {
   //} 
   
   if (status === "granted") {
-    const interval = setInterval(notificaiton_check() , 1000)
+    const interval = setInterval(notification_check , 1000)
   }
 })
 
