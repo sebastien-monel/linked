@@ -5,18 +5,9 @@ async function notification_check() {
     throw new Error(`Response status: ${response.status}`);
   }
   
-  const result = await response.json();
-  
-  console.log(typeof result); 
-  console.log(result); 
-  
-  const notifications_json = import( "/notifications.json", { with: { type: "json" } } );
+  const notifications_json = await response.json();  
   const notifications_tab = [] ;
   
-  console.log(typeof notifications_json); 
-  console.log(notifications_json); 
-  
-  //notifications_json.forEach((item, index) => {
   for (const notification of notifications_json) {
       notifications_tab.push( new Notification("Brouillon :", {
         body: notification['body'], 
