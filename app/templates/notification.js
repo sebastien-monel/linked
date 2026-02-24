@@ -14,7 +14,7 @@ async function notification_check() {
         tag : notification['tag']} 
       )
     notification_obj.onclick = click_notification;
-    notification_obj.onclose = close_notification;
+    //notification_obj.onclose = close_notification;
     notifications_tab.push( notification_obj )
   }
 }
