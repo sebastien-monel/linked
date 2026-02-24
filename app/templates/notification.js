@@ -13,16 +13,20 @@ async function notification_check() {
         body: notification['body'], 
         tag : notification['tag']} 
       )
-    notification_obj.onclick = click_notification
+    notification_obj.onclick = click_notification;
+    notification_obj.onclose = close_notification;
     notifications_tab.push( notification_obj )
   }
 }
 
 async function click_notification(event) {
-  console.log(typeof event.target.tag)
-  console.log(event.target.tag)
   event.preventDefault(); // prevent the browser from focusing the Notification's tab
-  window.open("/notification", "_blank");
+  window.open("/notification/".concat(event.target.tag), "_blank");
+}
+
+async function close_notification(event) {
+  event.preventDefault(); // prevent the browser from focusing the Notification's tab
+  window.open("/notification_close/".concat(event.target.tag), "_blank");
 }
 
 Notification.requestPermission().then((status) => {
@@ -31,6 +35,7 @@ Notification.requestPermission().then((status) => {
   
   //if (status === "default") {
     //Notification.requestPermission(location.reload(true))
+    //console.log(typeof event.target.tag)
   //} 
   
   if (status === "granted") {
