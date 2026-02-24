@@ -19,8 +19,8 @@ async function notification_check() {
 }
 
 async function click_notification(event) {
-  console.log(typeof evt.target)
-  console.log(evt.target)
+  console.log(typeof event.target)
+  console.log(event.target)
   event.preventDefault(); // prevent the browser from focusing the Notification's tab
   window.open("/notification", "_blank");
 }
