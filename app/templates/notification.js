@@ -14,7 +14,7 @@ Notification.requestPermission().then((status) => {
         throw new Error(`Response status: ${response.status}`);
       }
 
-      const result = await response.json();
+      const result = response.json();
       
       console.log(typeof result); 
       console.log(result); 
