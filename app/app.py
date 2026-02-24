@@ -102,7 +102,7 @@ RETURN n.url as url, n.name as name
 ORDER BY n.creation_date DESC
 """
 
-query_get_notifications === """
+query_get_notifications = """
 MATCH (n:notification) 
 WHERE n.status = "open"
 RETURN elementId(n) as notification_id, n.name as name
