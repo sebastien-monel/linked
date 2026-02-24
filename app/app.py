@@ -102,6 +102,18 @@ RETURN n.url as url, n.name as name
 ORDER BY n.creation_date DESC
 """
 
+query_get_notifications === """
+MATCH (n:notification) 
+WHERE n.status = "open"
+RETURN elementId(n) as notification_id, n.name as name
+"""
+
+query_get_notification = """
+MATCH (n:notification) 
+WHERE elementId(n) = $notification_id
+RETURN elementId(n) as notification_id, n.name as name
+"""
+
 query_full_backup_first_file = """
 MATCH (n:file)-[:in]->(:linked_instance)-[:in]->(dns:machine {dns:$name}) 
 RETURN n.file_uuid as uuid, 
@@ -1326,6 +1338,30 @@ def route_notification_js():
 
     return Response(render_template('notification.js'), mimetype='text/javascript')
 
+@app.route('/notification/<string:notification_id>', methods=['GET', 'POST'])
+def route_notification(notification_id):
+    session_data = session_check(request)
+    if (session_data['ip']['status'] == 'banned'):
+        app.logger.info("ip status : banned")
+        abort(404)
+
+    #if (session_data['session']['state'] != 'valid'):
+    #    abort(404)
+    
+    notification = []
+
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_get_notification,
+        parameters_= {'notification_id': notification_id})
+
+    app.logger.info("summary : %s ms", summary.result_available_after)
+    
+    for data in records:
+        notification.append({'body': data['name'],
+            'tag': data['notification_id']
+            })
+        
+    return jsonify(notification)
+
 @app.route('/events.json', methods=['GET', 'POST'])
 def route_events_json():
     session_data = session_check(request)
@@ -1385,11 +1421,18 @@ def route_notifications_json():
     session_data = session_check(request)
     if (session_data['ip']['status'] == 'banned'):
         abort(404)
-        
-    notifications = []
-    notifications.append({"body": "Hi there !!!", "tag" : "1"})
-    notifications.append({"body": "2eme Notifs !!", "tag" : "2!!!"})
 
+    records, summary, keys = app.config['NEO4J_DRIVER'].execute_query(query_get_notifications,
+        parameters_= {})
+
+    notifications = []
+    app.logger.info("summary : %s ms", summary.result_available_after)
+    
+    for data in records:
+        notifications.append({'body': data['name'],
+            'tag': data['notification_id']
+            })
+    
     return jsonify(notifications)
 
 @app.route('/<string:node_id>/data.json', methods=['GET', 'POST'])
