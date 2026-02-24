@@ -9,11 +9,18 @@ async function notification_check() {
   const notifications_tab = [] ;
   
   for (const notification of notifications_json) {
-      notifications_tab.push( new Notification("Brouillon :", {
+    const notification_obj = new Notification("Brouillon :", {
         body: notification['body'], 
         tag : notification['tag']} 
-      ))
+      )
+    notification_obj.onclick = click_notification
+    notifications_tab.push( notification_obj )
   }
+}
+
+async function click_notification(event) {
+  event.preventDefault(); // prevent the browser from focusing the Notification's tab
+  window.open("/notification", "_blank");
 }
 
 Notification.requestPermission().then((status) => {
