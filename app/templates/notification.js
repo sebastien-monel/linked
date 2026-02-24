@@ -1,16 +1,3 @@
-Notification.requestPermission().then((status) => {
-  //if (status === "denied") {
-  //}
-  
-  //if (status === "default") {
-    //Notification.requestPermission(location.reload(true))
-  //} 
-  
-  if (status === "granted") {
-    const interval = setInterval(notificaiton_check() , 1000)
-  }
-})
-
 async notificaiton_check() {
   const response = await fetch("/notifications.json");
   
@@ -37,3 +24,17 @@ async notificaiton_check() {
       ))
   }
 }
+
+Notification.requestPermission().then((status) => {
+  //if (status === "denied") {
+  //}
+  
+  //if (status === "default") {
+    //Notification.requestPermission(location.reload(true))
+  //} 
+  
+  if (status === "granted") {
+    const interval = setInterval(notificaiton_check() , 1000)
+  }
+})
+
