@@ -28,7 +28,9 @@ RUN echo "web ALL=(ALL) NOPASSWD:/scripts/gen_certs.sh" >> /etc/sudoers.d/gen_ce
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/renew_certs.sh" >> /etc/sudoers.d/renew_certs
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/revoke_certs.sh" >> /etc/sudoers.d/revoke_certs
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/chown_archive.sh" >> /etc/sudoers.d/chown_archive
+
 RUN echo "web ALL=(ALL) NOPASSWD:/usr/bin/netstat" >> /etc/sudoers.d/netstat
+RUN echo "web ALL=(ALL) NOPASSWD:/usr/local/bin/certbot" >> /etc/sudoers.d/certbot
 #RUN echo "web ALL=(ALL) NOPASSWD:/usr/bin/su" >> /etc/sudoers.d/su
 #RUN echo "web ALL=(ALL) NOPASSWD:/usr/bin/cat" >> /etc/sudoers.d/cat
 #!!!!
