@@ -1633,18 +1633,23 @@ if __name__ == "__main__":
         })
 
     app.config['INSTANCE_CONFIG'] = open_config_file()
-
+    
+    dns_name = os.environ['INSTANCE_DNS']
+    app.logger.info("dns_name : %s", dns_name)
+    
     try :
-        dns_name = os.environ['INSTANCE_DNS']
-        app.logger.info("dns_name : %s", dns_name)
         logs = os.system("/usr/bin/sudo /scripts/gen_certs.sh %s" % (dns_name))
-
-        rp = PublicKeyCredentialRpEntity(name="Linked : %s" % (dns_name), id=dns_name)
-        app.config['FIDO2_SERVER'] = Fido2Server(rp)
-
     finally:
         app.logger.info("logs : %s", logs)
-        
+
+    try :
+        logs = os.system("/usr/bin/sudo /scripts/renew_certs.sh %s" % (dns_name))
+    finally:
+        app.logger.info("logs : %s", logs)
+
+    rp = PublicKeyCredentialRpEntity(name="Linked : %s" % (dns_name), id=dns_name)
+    app.config['FIDO2_SERVER'] = Fido2Server(rp)
+    
     #rule = Rule(
     #    in_interface='eth0',
     #    protocol='tcp',
