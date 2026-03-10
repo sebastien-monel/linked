@@ -25,6 +25,7 @@ RUN rm /requirements.txt
 
 #RUN chmod 744 /etc/sudoers
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/gen_certs.sh" >> /etc/sudoers.d/gen_certs
+RUN echo "web ALL=(ALL) NOPASSWD:/scripts/renew_certs.sh" >> /etc/sudoers.d/renew_certs
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/revoke_certs.sh" >> /etc/sudoers.d/revoke_certs
 RUN echo "web ALL=(ALL) NOPASSWD:/scripts/chown_archive.sh" >> /etc/sudoers.d/chown_archive
 RUN echo "web ALL=(ALL) NOPASSWD:/usr/bin/netstat" >> /etc/sudoers.d/netstat
