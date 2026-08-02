@@ -22,6 +22,7 @@ import json
 import math
 import ssl
 import socket
+from threading import Timer
 
 #from ssl import Purpose
 from uuid import uuid4
@@ -42,6 +43,8 @@ from json.decoder import JSONDecodeError
 
 #from netfilter.rule import Rule,Match
 #from netfilter.table import Table
+
+mytimer = None
 
 UPLOAD_FOLDER = '/uploaded_files'
 #ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'py', 'exe', 'ipynb', 'zip', 'tar', 'sh', ''}
@@ -378,6 +381,11 @@ MERGE (machine)<-[:in]-(owner)
 MERGE (machine)<-[:in]-(user) 
 SET f.size = $size
 """
+
+def timer_execute():
+    mytimer = Timer(60, timer_execute)
+    mytimer.start()
+    app.logger.info("timer_execute ... ")
 
 def is_ready(config):
     return (('key' in config)
@@ -1618,7 +1626,8 @@ def route_upload_file_get():
 
 #this part is for flask server config not used used by gunicorn
 if __name__ == "__main__":
-
+    mytimer = timer_execute()
+    
     #argon2 et aes config
     if not(os.path.exists('/config/config.json')):
         save_config_file({
