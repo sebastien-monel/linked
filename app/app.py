@@ -807,7 +807,7 @@ def log_query_timer():
     try :
         results = app.config['NEO4J_DRIVER'].execute_query(
             query_timer,
-            name= os.environ['INSTANCE_DNS'],
+            dns= os.environ['INSTANCE_DNS'],
             instance_number= app.config['INSTANCE_NUMBER']
         )
     
