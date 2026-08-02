@@ -21,6 +21,8 @@ import sys
 import json
 import math
 import ssl
+import socket
+
 #from ssl import Purpose
 from uuid import uuid4
 import hashlib
@@ -1674,12 +1676,18 @@ if __name__ == "__main__":
         app.logger.info("    ... SSLContext get_ciphers : %s" % (context.get_ciphers()))
         context.sni_callback = ssl_sni_check
 
+        #with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
+        #    sock.bind(('0.0.0.0', 443))
+        #    sock.listen(5)
+        #    with context.wrap_socket(sock, server_side=True) as ssock:
+        #        conn, addr = ssock.accept()
+
     except FileNotFoundError:
         app.run(host='::', port='443') #debug=True
         #app.run(host='0.0.0.0', port='443') #debug=True
         app.logger.info("!!! no certs found !!!", app.config['INSTANCE_NUMBER'])
     else:
-        app.run(host='::', port='443', ssl_context=context) #debug=True
+        app.run(ssl_context=context) #debug=True
         #app.run(host='0.0.0.0', port='443', ssl_context=context) #debug=True
     finally :
         app.logger.info("instance name : %s", app.config['INSTANCE_NUMBER'])
