@@ -323,6 +323,12 @@ MERGE (li)<-[:to]-(ck)
 MERGE (ck)-[:from]->(ip) 
 """
 
+query_timer = """
+MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
+CREATE (li)<-[:on]-(te:timer_event {name:"main timer"})
+ON CREATE SET te.creation_date = datetime()
+"""
+
 query_session_check = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
 OPTIONAL MATCH (t:token) 
@@ -385,6 +391,7 @@ SET f.size = $size
 def timer_execute():
     mytimer = Timer(60, timer_execute)
     mytimer.start()
+    log_query_timer()
     app.logger.info("timer_execute ... ")
 
 def is_ready(config):
@@ -795,6 +802,19 @@ def sha256_oldest_file(sha256):
         break
 
     return data
+
+def log_query_timer():
+    results = app.config['NEO4J_DRIVER'].execute_query(
+        query_timer,
+        name= os.environ['INSTANCE_DNS'],
+        instance_number= app.config['INSTANCE_NUMBER']
+    )
+
+    for result in results.records:
+        data_line = result.data()
+        break
+
+    return None
 
 @app.route('/get_github_infos', methods = ['GET'])
 def route_get_github_infos():
