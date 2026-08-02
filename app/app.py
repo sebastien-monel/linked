@@ -325,8 +325,9 @@ MERGE (ck)-[:from]->(ip)
 
 query_timer = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
-CREATE (li)<-[:on]-(te:timer_event {name:"main timer"}) 
+MERGE (te:timer_event {name:"main timer"}) 
 ON CREATE SET te.creation_date = datetime() 
+MERGE (li)<-[:on]-(te) 
 """
 
 query_session_check = """
