@@ -325,7 +325,11 @@ MERGE (ck)-[:from]->(ip)
 
 query_timer = """
 MATCH (li:linked_instance {instance_number: $instance_number})-[:in]->(dns:machine {dns: $dns}) 
-CREATE (te:timer_event {name:"main timer", creation_date: datetime()}) 
+CREATE (te:timer_event {
+    name:"main timer", 
+    creation_date: datetime(), 
+    nb_thread: $nb_thread 
+    }) 
 MERGE (li)<-[:on]-(te) 
 """
 
@@ -807,7 +811,8 @@ def log_query_timer():
         results = app.config['NEO4J_DRIVER'].execute_query(
             query_timer,
             dns= os.environ['INSTANCE_DNS'],
-            instance_number= app.config['INSTANCE_NUMBER']
+            instance_number= app.config['INSTANCE_NUMBER'],
+            nb_thread= threading.active_count()
         )
     
     except AttributeError:
