@@ -392,7 +392,6 @@ def timer_execute():
     mytimer = Timer(60, timer_execute)
     mytimer.start()
     log_query_timer()
-    app.logger.info("timer_execute ... ")
 
 def is_ready(config):
     return (('key' in config)
@@ -804,19 +803,16 @@ def sha256_oldest_file(sha256):
     return data
 
 def log_query_timer():
-    if app.config['NEO4J_DRIVER'] is None:
-        return None
+    try :
+        results = app.config['NEO4J_DRIVER'].execute_query(
+            query_timer,
+            name= os.environ['INSTANCE_DNS'],
+            instance_number= app.config['INSTANCE_NUMBER']
+        )
     
-    results = app.config['NEO4J_DRIVER'].execute_query(
-        query_timer,
-        name= os.environ['INSTANCE_DNS'],
-        instance_number= app.config['INSTANCE_NUMBER']
-    )
-
-    for result in results.records:
-        data_line = result.data()
-        break
-
+    except AttributeError:
+        app.logger.info("timer_execute ... ")
+    
     return None
 
 @app.route('/get_github_infos', methods = ['GET'])
