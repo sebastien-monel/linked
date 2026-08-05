@@ -104,6 +104,7 @@ RETURN p.name as title
 
 query_url = """
 MATCH (n:link|web_page)
+WHERE n.visible = True
 RETURN n.url as url, n.name as name
 ORDER BY n.creation_date DESC
 """
