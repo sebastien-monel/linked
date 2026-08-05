@@ -1745,7 +1745,7 @@ if __name__ == "__main__":
         app.logger.info("    ... SSLContext get_ciphers : %s" % (context.get_ciphers()))
         context.sni_callback = ssl_sni_check
         
-        app.config['INSTANCE_STATE'] == "wait_for_password"
+        app.config['INSTANCE_STATE'] = "wait_for_password"
 
     except FileNotFoundError:
         app.run(host='::', port='443') #debug=True
